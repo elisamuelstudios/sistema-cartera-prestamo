@@ -1,0 +1,50 @@
+# Variables y secretos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Dependencias
+node_modules/
+**/node_modules/
+
+# Compilados y temporales
+dist/
+**/dist/
+.angular/
+**/.angular/
+coverage/
+output/
+tmp/
+*.log
+
+# Respaldos y datos
+backups/*
+!backups/.gitkeep
+*.dump
+*.db
+*.sqlite
+
+# Paquetes de producción
+*.tar
+*.tgz
+*.zip
+
+# Archivos Excel con posible información real
+*.xls
+*.xlsx
+*.xlsm
+
+# Configuración local
+docker-compose.override.yml
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Datos reales migrados
+database/seed-data/*
+!database/seed-data/.gitkeep

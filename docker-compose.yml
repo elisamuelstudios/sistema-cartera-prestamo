@@ -1,0 +1,57 @@
+name: sistema-cartera-eli
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cartera_eli}
+      POSTGRES_USER: ${POSTGRES_USER:-cartera}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cartera_local_2026}
+      TZ: ${APP_TIMEZONE:-America/Bogota}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cartera} -d ${POSTGRES_DB:-cartera_eli}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-cartera_eli}
+      DB_USER: ${POSTGRES_USER:-cartera}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cartera_local_2026}
+      JWT_SECRET: ${JWT_SECRET:-cambiar-esta-clave-antes-de-produccion}
+      SEED_DATA_DIR: /app/seed-data
+      TZ: ${APP_TIMEZONE:-America/Bogota}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

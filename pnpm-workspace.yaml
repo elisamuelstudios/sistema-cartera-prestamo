@@ -1,0 +1,11 @@
+packages:
+  - frontend
+  - backend
+allowBuilds:
+  '@parcel/watcher': true
+  '@scarf/scarf': false
+  bcrypt: true
+  esbuild: true
+  lmdb: false
+  msgpackr-extract: true
+  unrs-resolver: true

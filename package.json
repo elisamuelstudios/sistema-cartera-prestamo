@@ -1,0 +1,12 @@
+{
+  "name": "sistema-cartera-eli",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --filter sistema-cartera-api build && pnpm --filter frontend build",
+    "test": "pnpm --filter sistema-cartera-api test --runInBand && pnpm --filter frontend test --watch=false",
+    "start:docker": "docker compose up -d --build",
+    "stop:docker": "docker compose down"
+  },
+  "packageManager": "pnpm@11.16.0"
+}

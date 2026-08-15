@@ -1,0 +1,86 @@
+name: cartera-eli
+
+services:
+  db:
+    image: postgres:17.10-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Configura POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Configura POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configura POSTGRES_PASSWORD}
+      TZ: ${APP_TIMEZONE:-America/Bogota}
+    volumes:
+      - cartera_postgres_data:/var/lib/postgresql/data
+    networks:
+      - cartera_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    security_opt:
+      - no-new-privileges:true
+
+  api:
+    image: ${CARTERA_API_IMAGE:-cartera-api:local}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:?Configura POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER:?Configura POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Configura POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Configura JWT_SECRET}
+      SEED_DATA_DIR: /app/seed-data
+      TZ: ${APP_TIMEZONE:-America/Bogota}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - cartera_internal
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+    security_opt:
+      - no-new-privileges:true
+
+  web:
+    image: ${CARTERA_WEB_IMAGE:-cartera-web:local}
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - cartera_internal
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${EDGE_NETWORK:-edge}
+      - traefik.http.routers.cartera.rule=Host(`${CARTERA_DOMAIN:?Configura CARTERA_DOMAIN}`)
+      - traefik.http.routers.cartera.entrypoints=websecure
+      - traefik.http.routers.cartera.tls=true
+      - traefik.http.routers.cartera.tls.certresolver=letsencrypt
+      - traefik.http.services.cartera.loadbalancer.server.port=8080
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  cartera_internal:
+    internal: true
+  edge:
+    external: true
+    name: ${EDGE_NETWORK:-edge}
+
+volumes:
+  cartera_postgres_data:
+    name: cartera_eli_postgres_data

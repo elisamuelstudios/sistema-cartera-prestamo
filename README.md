@@ -59,11 +59,11 @@ Para detenerlo sin borrar datos:
 - Inicio de sesión JWT, roles Administrador/Operador, guards e interceptor.
 - Dashboard ejecutivo como página Inicio.
 - Clientes con formulario por pasos, validaciones, Lista Negra y estado del préstamo actual.
-- Préstamos nuevos, edición, cuota editable, interés fijo mínimo del 20 % y refinanciación `RF-000001`.
+- Préstamos nuevos, edición, cuota editable, interés fijo y aviso confirmable por debajo del 10 %, con refinanciación `RF-000001`.
 - Refinanciación sobre refinanciación, sin interés moratorio diario.
 - Registro y edición de pagos con redistribución de cuotas y saldos.
-- Cartera, mora, rutas, exportación Excel por ruta y valores en moneda.
-- Cierre de caja con resumen precargado desde pagos, cuotas y refinanciaciones.
+- Cartera, mora, rutas, exportación Excel de todas las rutas o de la ruta seleccionada y valores en moneda.
+- Cierre de caja con facturas, moche, efectivo anterior y venta diaria calculados desde pagos, cuotas, préstamos y refinanciaciones.
 - Configuración editable, usuarios, roles y auditoría.
 - Modales reutilizables, servicios por dominio, DTO, validación y migraciones de base de datos.
 
@@ -79,7 +79,7 @@ sistema-cartera-web/
 └── .env                   Configuración local no versionada
 ```
 
-Consulta [Arquitectura](docs/ARQUITECTURA.md), [Migración](docs/MIGRACION.md) y [Operación](docs/OPERACION.md) para el detalle.
+Consulta [Arquitectura](docs/ARQUITECTURA.md), [Migración](docs/MIGRACION.md), [Operación](docs/OPERACION.md) y [Despliegue VPS multiaplicación](docs/DESPLIEGUE-VPS-MULTIAPP.md) para el detalle.
 
 ## Respaldo y restauración
 
@@ -134,4 +134,3 @@ http://localhost:8080/api/docs
 ## Configuración de entrega
 
 Antes de instalarlo en el equipo definitivo, cambia `POSTGRES_PASSWORD` y `JWT_SECRET` en `.env`. No borres el volumen `sistema-cartera-eli_postgres_data`: allí vive la base de datos. `docker compose down` conserva el volumen; no uses `docker compose down -v` salvo que realmente quieras eliminar toda la información.
-

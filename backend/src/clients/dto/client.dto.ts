@@ -1,5 +1,14 @@
 import { Type } from 'class-transformer';
-import { IsEmail, IsEnum, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { ClientStatus } from '../../common/enums';
 
 export class CreateClientDto {
@@ -20,8 +29,8 @@ export class CreateClientDto {
   @IsOptional() @IsString() familyReferences?: string;
   @IsOptional() @IsString() observations?: string;
   @IsOptional() @IsEnum(ClientStatus) status?: ClientStatus;
-  @IsOptional() @IsString() routeId?: string;
+  @IsUUID('4', { message: 'Debes asignar una ruta válida al cliente' })
+  routeId!: string;
 }
 
 export class UpdateClientDto extends CreateClientDto {}
-

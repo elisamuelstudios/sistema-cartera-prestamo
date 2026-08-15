@@ -15,6 +15,7 @@ interface CloseSummary {
   salesPayments: number; cancelledPayments: number; refinancedLoans: number; refinancedAmount: number;
   expectedAmount: number; receivedAmount: number; effectiveness: number; mochi: number; gota: number;
   gotaPercentage: number; ratingPercentage: number; initialCash: number;
+  cashBroughtByCollector: number; totalSales: number;
 }
 
 @Component({
@@ -31,12 +32,12 @@ interface CloseSummary {
         <section class="block"><h3>Datos del cierre</h3><div class="form-grid three"><div class="field"><label class="required">Ruta</label><select formControlName="routeId" (change)="loadSummary()"><option value="">Selecciona</option>@for (route of routes(); track route.id) {<option [value]="route.id">{{route.code}} · {{route.name}}</option>}</select></div><div class="field"><label class="required">Fecha</label><input type="date" formControlName="date" (change)="loadSummary()"></div><div class="field"><label>Cobrador</label><input [value]="summary()?.collector||'Selecciona una ruta'" readonly></div></div></section>
 
         <section class="block"><h3>Movimiento de efectivo</h3><div class="form-grid three">
-          <div class="field"><label>Efectivo que trae el cobrador</label><input appMoneyInput type="text" inputmode="numeric" formControlName="cashBroughtByCollector"></div>
+          <div class="field"><label>Efectivo que trae el cobrador</label><input appMoneyInput type="text" inputmode="numeric" formControlName="cashBroughtByCollector" readonly><span class="hint">Saldo que llevaba el cobrador en el cierre anterior.</span></div>
           <div class="field"><label>Base 1 - nuevo efectivo</label><input appMoneyInput type="text" inputmode="numeric" formControlName="baseOne"></div>
           <div class="field"><label>Base 2 - retiro caja interna</label><input appMoneyInput type="text" inputmode="numeric" formControlName="baseTwo"></div>
           <div class="field"><label>Seguro</label><input appMoneyInput type="text" inputmode="numeric" formControlName="insuranceIncome"></div>
           <div class="field"><label>Otros ingresos</label><input appMoneyInput type="text" inputmode="numeric" formControlName="otherIncome"></div>
-          <div class="field"><label>Total venta</label><input appMoneyInput type="text" inputmode="numeric" formControlName="totalSales"></div>
+          <div class="field"><label>Total venta</label><input appMoneyInput type="text" inputmode="numeric" formControlName="totalSales" readonly><span class="hint">Desembolsos registrados en la fecha y ruta.</span></div>
           <div class="field"><label>Recibido para retiro de capital</label><input appMoneyInput type="text" inputmode="numeric" formControlName="capitalWithdrawal"></div>
           <div class="field"><label>Guardar en caja interna</label><input appMoneyInput type="text" inputmode="numeric" formControlName="cashToInternal"></div>
           <div class="field"><label>Efectivo que se lleva el cobrador</label><input appMoneyInput type="text" inputmode="numeric" formControlName="collectorCarryCash"></div>
@@ -62,7 +63,7 @@ interface CloseSummary {
             <div><span>Monto esperado</span><strong>{{s.expectedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div>
             <div><span>Monto recibido</span><strong>{{s.receivedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div><div><span>Efectividad</span><strong>{{s.effectiveness|percent:'1.0-1'}}</strong></div>
             <div><span>Gota</span><strong>{{s.gota|currency:'COP':'symbol-narrow':'1.0-0'}}</strong><small>{{s.gotaPercentage|percent:'1.0-1'}}</small></div><div><span>Rating</span><strong>{{s.ratingPercentage|percent:'1.0-1'}}</strong></div>
-            <div><span>Caja interna inicial</span><strong>{{s.initialCash|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div><div class="editable-metric"><span>Moche</span><input appMoneyInput type="text" inputmode="numeric" formControlName="mochi"></div>
+            <div><span>Caja interna inicial</span><strong>{{s.initialCash|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div><div><span>Moche</span><strong>{{s.mochi|currency:'COP':'symbol-narrow':'1.0-0'}}</strong><small>Saldo absorbido al refinanciar</small></div>
           </div>} @else {<p>Selecciona ruta y fecha para calcular el informe.</p>}
         </section>
 
@@ -96,7 +97,7 @@ export class CashClosuresComponent implements OnInit {
 
   ngOnInit() { this.catalog.routes(true).subscribe((routes) => this.routes.set(routes)); this.load(); }
   get totalExpenses() { const v = this.form.getRawValue(); return ['lunchExpense','snackExpense','stationeryExpense','payrollExpense','fuelExpense','repairExpense','extraExpenses'].reduce((sum, key) => sum + Number(v[key as keyof typeof v] || 0), 0); }
-  get totalIncome() { const v = this.form.getRawValue(); return Number(this.summary()?.receivedAmount || 0) + Number(v.insuranceIncome || 0) + Number(v.otherIncome || 0) + Number(v.totalSales || 0); }
+  get totalIncome() { const v = this.form.getRawValue(); return Number(this.summary()?.receivedAmount || 0) + Number(v.insuranceIncome || 0) + Number(v.otherIncome || 0) + Number(this.summary()?.totalSales || 0); }
   get cashCount() { const v = this.form.getRawValue(); return Number(v.bills100000 || 0)*100000 + Number(v.bills50000 || 0)*50000 + Number(v.bills20000 || 0)*20000 + Number(v.bills10000 || 0)*10000 + Number(v.bills5000 || 0)*5000 + Number(v.bills2000 || 0)*2000 + Number(v.coins1000 || 0)*1000 + Number(v.coins500 || 0)*500 + Number(v.coins200 || 0)*200 + Number(v.coins100 || 0)*100 + Number(v.coins50 || 0)*50; }
   get calculatedFinal() { const v = this.form.getRawValue(); return Number(this.summary()?.initialCash || 0) + this.totalIncome - this.totalExpenses - Number(v.capitalWithdrawal || 0) - Number(v.cashToInternal || 0); }
   get difference() { return this.cashCount - this.calculatedFinal; }
@@ -107,7 +108,7 @@ export class CashClosuresComponent implements OnInit {
     this.form.reset({ routeId: '', date: new Date().toISOString().slice(0, 10), cashBroughtByCollector: 0, baseOne: 0, baseTwo: 0, insuranceIncome: 0, otherIncome: 0, totalSales: 0, lunchExpense: 0, snackExpense: 0, stationeryExpense: 0, payrollExpense: 0, fuelExpense: 0, repairExpense: 0, extraExpenses: 0, expenseComments: '', capitalWithdrawal: 0, cashToInternal: 0, collectorCarryCash: 0, mochi: 0, bills100000: 0, bills50000: 0, bills20000: 0, bills10000: 0, bills5000: 0, bills2000: 0, coins1000: 0, coins500: 0, coins200: 0, coins100: 0, coins50: 0, notes: '' });
     this.summary.set(null); this.modal.set(true);
   }
-  loadSummary() { const { routeId, date } = this.form.getRawValue(); if (!routeId || !date) { this.summary.set(null); return; } this.service.closeSummary(routeId, date).subscribe({ next: (result) => { this.summary.set(result); this.form.patchValue({ mochi: result.mochi ?? 0 }); }, error: (error) => this.toast.error(error) }); }
+  loadSummary() { const { routeId, date } = this.form.getRawValue(); if (!routeId || !date) { this.summary.set(null); return; } this.service.closeSummary(routeId, date).subscribe({ next: (result) => { this.summary.set(result); this.form.patchValue({ cashBroughtByCollector: result.cashBroughtByCollector ?? 0, totalSales: result.totalSales ?? 0, mochi: result.mochi ?? 0 }); }, error: (error) => this.toast.error(error) }); }
   save() {
     if (this.form.invalid || !this.summary()) { this.form.markAllAsTouched(); this.toast.show('Selecciona la ruta y completa los campos obligatorios', 'error'); return; }
     this.saving.set(true); const body = { ...this.form.getRawValue(), totalExpenses: this.totalExpenses, initialCash: this.summary()!.initialCash, cashCount: this.cashCount };

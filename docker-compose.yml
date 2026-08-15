@@ -31,7 +31,6 @@ services:
       DB_USER: ${POSTGRES_USER:-cartera}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cartera_local_2026}
       JWT_SECRET: ${JWT_SECRET:-cambiar-esta-clave-antes-de-produccion}
-      SEED_DATA_DIR: /app/seed-data
       TZ: ${APP_TIMEZONE:-America/Bogota}
     depends_on:
       db:

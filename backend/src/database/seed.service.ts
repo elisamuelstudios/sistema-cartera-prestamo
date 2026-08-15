@@ -28,8 +28,7 @@ export class SeedService implements OnApplicationBootstrap {
   ) { this.directory = config.get('SEED_DATA_DIR', path.resolve(process.cwd(), '../database/seed-data')); }
 
   async onApplicationBootstrap() {
-    if (await this.clients.count() > 0) return;
-    try { await this.seed(); } catch (error) { this.logger.error('No se pudo cargar la migración inicial', error instanceof Error ? error.stack : String(error)); throw error; }
+  return 
   }
 
   private async seed() {

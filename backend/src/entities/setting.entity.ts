@@ -1,7 +1,10 @@
 import { Column, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 
 @Entity('settings')
-@Unique(['key', 'value'])
+// La clave identifica el parámetro: debe ser única por sí sola.
+// Antes era @Unique(['key','value']), lo que permitía claves duplicadas con
+// valores distintos y hacía que getValue() devolviera una fila arbitraria.
+@Unique('uq_settings_key', ['key'])
 export class Setting {
   @PrimaryGeneratedColumn('uuid') id!: string;
   @Column({ length: 100 }) key!: string;
@@ -11,4 +14,3 @@ export class Setting {
   @Column({ default: true }) editable!: boolean;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt!: Date;
 }
-

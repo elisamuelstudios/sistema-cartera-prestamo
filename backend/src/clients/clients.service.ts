@@ -24,6 +24,7 @@ export class ClientsService {
     page = 1,
     pageSize = 25,
     collectable = false,
+    routeId = '',
   ) {
     const query = this.repository
       .createQueryBuilder('client')
@@ -37,6 +38,7 @@ export class ClientsService {
       .orderBy('client.createdAt', 'DESC')
       .addOrderBy('client.code', 'DESC');
     if (status) query.andWhere('client.status = :status', { status });
+    if (routeId) query.andWhere('client.routeId = :routeId', { routeId });
     if (collectable) query.andWhere('loan.id IS NOT NULL');
     if (search.trim()) {
       const value = `%${search.trim()}%`;

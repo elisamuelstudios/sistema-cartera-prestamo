@@ -12,6 +12,15 @@ import {
   LoanStatus,
   PaymentFrequency,
 } from '../common/enums';
+import {
+  buildSchedule,
+  ChargeMode,
+  InterestType,
+  isChargeMode,
+  isInterestType,
+  resolvePrincipal,
+  ScheduleResult,
+} from '../common/finance/interest';
 import { nextCode, toMoney } from '../common/utils/codes';
 import { Client } from '../entities/client.entity';
 import { Installment } from '../entities/installment.entity';
@@ -23,6 +32,9 @@ import {
   RefinanceLoanDto,
   UpdateLoanDto,
 } from './dto/loan.dto';
+
+/** Umbral bajo el cual se avisa al asesor (no bloquea la operación). */
+const LOW_RATE_WARNING_THRESHOLD = 0.1;
 
 @Injectable()
 export class LoansService {
@@ -42,6 +54,7 @@ export class LoansService {
     page = 1,
     pageSize = 25,
     clientId = '',
+    routeId = '',
   ) {
     await this.refreshOverdueStatuses();
     const query = this.loans
@@ -57,10 +70,20 @@ export class LoansService {
             'paidInstallment.paid_amount >= paidInstallment.amount',
           ),
       )
+      .loadRelationCountAndMap(
+        'loan.partialInstallmentCount',
+        'loan.installments',
+        'partialInstallment',
+        (partialInstallment) =>
+          partialInstallment.where(
+            'partialInstallment.paid_amount > 0 AND partialInstallment.paid_amount < partialInstallment.amount',
+          ),
+      )
       .orderBy('loan.createdAt', 'DESC')
       .addOrderBy('loan.number', 'DESC');
     if (status) query.andWhere('loan.status = :status', { status });
     if (clientId) query.andWhere('loan.clientId = :clientId', { clientId });
+    if (routeId) query.andWhere('loan.routeId = :routeId', { routeId });
     if (search.trim()) {
       const value = `%${search.trim()}%`;
       query.andWhere(
@@ -114,13 +137,18 @@ export class LoansService {
       const codes = (await manager.find(Loan, { select: { number: true } }))
         .map((loan) => loan.number)
         .filter((number) => number.startsWith('PR-'));
-      const loan = manager.create(
-        Loan,
-        this.buildLoan(dto, nextCode('PR', codes, 6), username),
+      const { values, schedule } = this.buildLoan(
+        dto,
+        nextCode('PR', codes, 6),
+        username,
       );
-      const created = await manager.save(loan);
+      const created = await manager.save(manager.create(Loan, values));
       await manager.save(
-        this.buildSchedule(manager.getRepository(Installment), created),
+        this.materializeSchedule(
+          manager.getRepository(Installment),
+          created.id,
+          schedule,
+        ),
       );
       return created;
     });
@@ -134,9 +162,15 @@ export class LoansService {
     });
     if (!current) throw new NotFoundException('Préstamo no encontrado');
     const financialChange = [
+      'requestedAmount',
       'disbursedAmount',
       'installmentCount',
       'interestRate',
+      'interestType',
+      'chargeMode',
+      'administrativeFee',
+      'insurance',
+      'additionalCosts',
       'dailyInstallment',
       'loanDate',
       'frequency',
@@ -151,21 +185,25 @@ export class LoansService {
     }
     await this.dataSource.transaction(async (manager) => {
       const merged = { ...current, ...dto } as CreateLoanDto;
-      Object.assign(
-        current,
-        this.buildLoan(
-          merged,
-          current.number,
-          current.createdBy ?? username,
-          username,
-        ),
-        { id: current.id, status: current.status },
+      const { values, schedule } = this.buildLoan(
+        merged,
+        current.number,
+        current.createdBy ?? username,
+        username,
       );
+      Object.assign(current, values, {
+        id: current.id,
+        status: current.status,
+      });
       await manager.save(current);
       if (financialChange) {
         await manager.delete(Installment, { loanId: current.id });
         await manager.save(
-          this.buildSchedule(manager.getRepository(Installment), current),
+          this.materializeSchedule(
+            manager.getRepository(Installment),
+            current.id,
+            schedule,
+          ),
         );
       }
     });
@@ -195,15 +233,24 @@ export class LoansService {
         requestedAmount: balance,
         disbursedAmount: balance,
       };
+      const { values, schedule } = this.buildLoan(
+        refinanceDto,
+        number,
+        username,
+      );
       const created = await manager.save(
         manager.create(Loan, {
-          ...this.buildLoan(refinanceDto, number, username),
+          ...values,
           operationType: 'Refinanciación',
           originLoanId: origin.id,
         }),
       );
       await manager.save(
-        this.buildSchedule(manager.getRepository(Installment), created),
+        this.materializeSchedule(
+          manager.getRepository(Installment),
+          created.id,
+          schedule,
+        ),
       );
       origin.status = LoanStatus.REFINANCED;
       origin.refinancedIn = number;
@@ -244,50 +291,84 @@ export class LoansService {
     );
   }
 
-  private calculate(
-    dto: Pick<
-      LoanPreviewDto,
-      | 'disbursedAmount'
-      | 'installmentCount'
-      | 'interestRate'
-      | 'dailyInstallment'
-      | 'administrativeFee'
-      | 'insurance'
-      | 'additionalCosts'
-    >,
-  ) {
-    const principal = toMoney(dto.disbursedAmount);
-    const installments = Math.max(1, Math.round(Number(dto.installmentCount)));
-    const charges =
-      toMoney(dto.administrativeFee) +
-      toMoney(dto.insurance) +
-      toMoney(dto.additionalCosts);
+  // ---------------------------------------------------------------------------
+  // Cálculo financiero
+  //
+  // Toda la aritmética vive en `common/finance/interest.ts`: funciones puras,
+  // sin dependencias de Nest ni de TypeORM, cubiertas por tests de paridad
+  // contra los planes de pago reales del Excel. Este servicio solo orquesta.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * `interestRate` es la tasa **MENSUAL** en decimal (0,28 = 28 % mensual).
+   *
+   *  - Tipo `Fijo`        -> interés = capital × tasa mensual, aplicado una vez.
+   *  - Tipo `Sobre saldo` -> por cuota: saldo × (tasa mensual / períodos del mes).
+   *
+   * El capital sobre el que se calcula depende del modo de cargos: con
+   * `Financiados` (defecto), comisión + seguro + gastos entran al capital y por
+   * tanto SÍ generan interés, igual que en el Excel.
+   */
+  private calculate(dto: LoanPreviewDto) {
     const rate = Number(dto.interestRate);
     if (!Number.isFinite(rate) || rate < 0)
       throw new BadRequestException(
         'El interés calculado no puede ser negativo',
       );
-    const interest = toMoney(principal * rate);
-    const total = toMoney(principal + interest + charges);
-    const dailyInstallment = dto.dailyInstallment
-      ? toMoney(dto.dailyInstallment)
-      : toMoney(Math.ceil(total / installments));
-    const actualInstallmentCount = dto.dailyInstallment
-      ? Math.max(1, Math.ceil(total / dailyInstallment))
-      : installments;
-    const lastInstallment = toMoney(
-      total - dailyInstallment * (actualInstallmentCount - 1),
-    );
+
+    const frequency = dto.frequency ?? PaymentFrequency.DAILY;
+    const interestType: InterestType = isInterestType(dto.interestType)
+      ? dto.interestType
+      : 'Fijo';
+    const chargeMode: ChargeMode = isChargeMode(dto.chargeMode)
+      ? dto.chargeMode
+      : 'Financiados';
+
+    const base = resolvePrincipal({
+      requestedAmount: dto.requestedAmount ?? dto.disbursedAmount,
+      disbursedAmount: dto.disbursedAmount,
+      administrativeFee: dto.administrativeFee,
+      insurance: dto.insurance,
+      additionalCosts: dto.additionalCosts,
+      chargeMode,
+    });
+
+    let schedule: ScheduleResult;
+    try {
+      schedule = buildSchedule({
+        principal: base.principal,
+        installmentCount: dto.installmentCount,
+        loanDate: dto.loanDate ?? new Date().toISOString().slice(0, 10),
+        frequency,
+        monthlyRate: rate,
+        interestType,
+        agreedInstallment: dto.dailyInstallment,
+      });
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error
+          ? error.message
+          : 'Parámetros de crédito inválidos',
+      );
+    }
+
     const normalizedRate = Math.round(rate * 1_000_000) / 1_000_000;
     return {
       interestRate: normalizedRate,
-      generatedInterest: interest,
-      total,
-      dailyInstallment,
-      installmentCount: actualInstallmentCount,
-      lastInstallment: lastInstallment > 0 ? lastInstallment : dailyInstallment,
+      interestType,
+      chargeMode,
+      frequency,
+      principal: base.principal,
+      disbursedAmount: base.disbursedAmount,
+      charges: base.charges,
+      generatedInterest: schedule.totalInterest,
+      total: schedule.total,
+      dailyInstallment: schedule.installmentAmount,
+      installmentCount: schedule.installmentCount,
+      lastInstallment: schedule.lastInstallment,
+      schedule: schedule.rows,
       warnings:
-        normalizedRate < 0.1
+        normalizedRate < LOW_RATE_WARNING_THRESHOLD
           ? [
               'El interés calculado es inferior al 10 %. Confirma que corresponde al acuerdo con el cliente.',
             ]
@@ -300,115 +381,101 @@ export class LoansService {
     number: string,
     createdBy: string,
     advisorUsername = createdBy,
-  ): Partial<Loan> {
+  ): { values: Partial<Loan>; schedule: ScheduleResult['rows'] } {
     const values = this.calculate(dto);
     return {
-      number,
-      clientId: dto.clientId,
-      requestedAmount: toMoney(dto.requestedAmount),
-      disbursedAmount: toMoney(dto.disbursedAmount),
-      loanDate: dto.loanDate,
-      installmentCount: values.installmentCount,
-      frequency: dto.frequency,
-      interestRate: values.interestRate,
-      interestType: dto.interestType ?? 'Fijo',
-      administrativeFee: toMoney(dto.administrativeFee),
-      insurance: toMoney(dto.insurance),
-      additionalCosts: toMoney(dto.additionalCosts),
-      dailyInstallment: values.dailyInstallment,
-      generatedInterest: values.generatedInterest,
-      outstandingPrincipal: values.total,
-      overdueAmount: 0,
-      totalPaid: 0,
-      status: LoanStatus.ACTIVE,
-      advisor: advisorUsername,
-      observations: dto.observations?.trim() || null,
-      routeId: dto.routeId || null,
-      chargeMode: dto.chargeMode ?? 'Financiados',
-      operationType: 'Nuevo',
-      createdBy,
+      schedule: values.schedule,
+      values: {
+        number,
+        clientId: dto.clientId,
+        requestedAmount: toMoney(dto.requestedAmount),
+        // El desembolso efectivo depende del modo de cargos (p. ej. Descontados).
+        disbursedAmount: values.disbursedAmount,
+        loanDate: dto.loanDate,
+        installmentCount: values.installmentCount,
+        frequency: values.frequency,
+        interestRate: values.interestRate,
+        interestType: values.interestType,
+        administrativeFee: toMoney(dto.administrativeFee),
+        insurance: toMoney(dto.insurance),
+        additionalCosts: toMoney(dto.additionalCosts),
+        dailyInstallment: values.dailyInstallment,
+        generatedInterest: values.generatedInterest,
+        // TODO (Fase 2): separar en `outstanding_principal` (capital pendiente,
+        // Excel: CapitalPendiente) y `total_outstanding` (Excel:
+        // SaldoPendienteTotal). Hoy esta columna guarda el saldo TOTAL pendiente,
+        // que es lo que consumen el dashboard y el módulo de pagos.
+        outstandingPrincipal: values.total,
+        overdueAmount: 0,
+        totalPaid: 0,
+        status: LoanStatus.ACTIVE,
+        advisor: advisorUsername,
+        observations: dto.observations?.trim() || null,
+        routeId: dto.routeId || null,
+        chargeMode: values.chargeMode,
+        operationType: 'Nuevo',
+        createdBy,
+      },
     };
   }
 
-  private buildSchedule(repository: Repository<Installment>, loan: Loan) {
-    const total = toMoney(
-      Number(loan.disbursedAmount) +
-        Number(loan.generatedInterest) +
-        Number(loan.administrativeFee) +
-        Number(loan.insurance) +
-        Number(loan.additionalCosts),
-    );
-    const capitalUnit = toMoney(
-      Number(loan.disbursedAmount) / loan.installmentCount,
-    );
-    const interestUnit = toMoney(
-      Number(loan.generatedInterest) / loan.installmentCount,
-    );
-    let accumulated = 0;
-    return Array.from({ length: loan.installmentCount }, (_value, index) => {
-      const number = index + 1;
-      const dueDate = this.addPeriod(loan.loanDate, loan.frequency, number);
-      const amount =
-        number === loan.installmentCount
-          ? toMoney(total - accumulated)
-          : toMoney(loan.dailyInstallment);
-      accumulated = toMoney(accumulated + amount);
-      return repository.create({
-        loanId: loan.id,
-        number,
-        dueDate,
-        capital:
-          number === loan.installmentCount
-            ? toMoney(Number(loan.disbursedAmount) - capitalUnit * index)
-            : capitalUnit,
-        interest:
-          number === loan.installmentCount
-            ? toMoney(Number(loan.generatedInterest) - interestUnit * index)
-            : interestUnit,
-        amount,
-        remainingBalance: toMoney(total - accumulated),
+  private materializeSchedule(
+    repository: Repository<Installment>,
+    loanId: string,
+    rows: ScheduleResult['rows'],
+  ) {
+    return rows.map((row) =>
+      repository.create({
+        loanId,
+        number: row.number,
+        dueDate: row.dueDate,
+        capital: row.capital,
+        interest: row.interest,
+        amount: row.amount,
+        remainingBalance: row.remainingBalance,
         paidAmount: 0,
         status: InstallmentStatus.PENDING,
         daysLate: 0,
         paidAt: null,
-      });
-    });
-  }
-
-  private addPeriod(start: string, frequency: PaymentFrequency, index: number) {
-    const date = new Date(`${start}T12:00:00Z`);
-    if (frequency === PaymentFrequency.MONTHLY)
-      date.setUTCMonth(date.getUTCMonth() + index);
-    else
-      date.setUTCDate(
-        date.getUTCDate() +
-          index *
-            ({
-              [PaymentFrequency.DAILY]: 1,
-              [PaymentFrequency.WEEKLY]: 7,
-              [PaymentFrequency.BIWEEKLY]: 15,
-            }[frequency] ?? 1),
-      );
-    return date.toISOString().slice(0, 10);
+      }),
+    );
   }
 
   private present(loan: Loan) {
-    const totalDebt = toMoney(
-      Number(loan.disbursedAmount) +
-        Number(loan.generatedInterest) +
-        Number(loan.administrativeFee) +
-        Number(loan.insurance) +
-        Number(loan.additionalCosts),
-    );
-    const mappedCount = (loan as Loan & { paidInstallmentCount?: number })
-      .paidInstallmentCount;
+    const base = resolvePrincipal({
+      requestedAmount: Number(loan.requestedAmount),
+      disbursedAmount: Number(loan.disbursedAmount),
+      administrativeFee: Number(loan.administrativeFee),
+      insurance: Number(loan.insurance),
+      additionalCosts: Number(loan.additionalCosts),
+      chargeMode: isChargeMode(loan.chargeMode)
+        ? loan.chargeMode
+        : 'Financiados',
+    });
+    // Con `Descontados` el capital ya es lo solicitado; con `Financiados` incluye
+    // los cargos. En ambos casos la deuda total es capital + interés.
+    const totalDebt = toMoney(base.principal + Number(loan.generatedInterest));
+
+    const extended = loan as Loan & {
+      paidInstallmentCount?: number;
+      partialInstallmentCount?: number;
+    };
     const installmentsPaid =
-      mappedCount ??
+      extended.paidInstallmentCount ??
       loan.installments?.filter(
         (installment) =>
           Number(installment.paidAmount) >= Number(installment.amount),
       ).length ??
       0;
+    const hasPartial =
+      extended.partialInstallmentCount !== undefined
+        ? extended.partialInstallmentCount > 0
+        : (loan.installments?.some(
+            (installment) =>
+              Number(installment.paidAmount) > 0 &&
+              Number(installment.paidAmount) < Number(installment.amount),
+          ) ?? false);
+
     const lastInstallment =
       loan.installments?.find(
         (installment) => installment.number === loan.installmentCount,
@@ -416,12 +483,16 @@ export class LoansService {
       toMoney(
         totalDebt - Number(loan.dailyInstallment) * (loan.installmentCount - 1),
       );
+
     return {
       ...loan,
       totalDebt,
       pendingBalance: Number(loan.outstandingPrincipal),
       installmentsPaid,
-      installmentProgress: `${installmentsPaid} de ${loan.installmentCount}`,
+      // Excel: `ProgresoCuotas` -> "5 de 32 + parcial".
+      installmentProgress: `${installmentsPaid} de ${loan.installmentCount}${
+        hasPartial ? ' + parcial' : ''
+      }`,
       lastInstallment: Number(lastInstallment),
       clientName: loan.client
         ? `${loan.client.firstNames} ${loan.client.lastNames}`

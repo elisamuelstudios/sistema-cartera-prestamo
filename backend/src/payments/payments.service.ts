@@ -25,7 +25,14 @@ export class PaymentsService {
     private readonly audit: AuditService,
   ) {}
 
-  async findAll(search = '', page = 1, pageSize = 25) {
+  async findAll(
+    search = '',
+    page = 1,
+    pageSize = 25,
+    method = '',
+    routeId = '',
+    loanId = '',
+  ) {
     const query = this.payments
       .createQueryBuilder('payment')
       .leftJoinAndSelect('payment.loan', 'loan')
@@ -33,6 +40,9 @@ export class PaymentsService {
       .leftJoinAndSelect('payment.route', 'route')
       .orderBy('payment.paymentDate', 'DESC')
       .addOrderBy('payment.createdAt', 'DESC');
+    if (method) query.andWhere('payment.method = :method', { method });
+    if (routeId) query.andWhere('payment.routeId = :routeId', { routeId });
+    if (loanId) query.andWhere('payment.loanId = :loanId', { loanId });
     if (search.trim()) {
       const value = `%${search.trim()}%`;
       query.andWhere(

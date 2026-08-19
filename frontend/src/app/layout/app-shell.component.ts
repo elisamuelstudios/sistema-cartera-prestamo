@@ -6,19 +6,22 @@ import { AuthService } from '../core/services/auth.service';
 import { ToastService } from '../core/services/toast.service';
 import { ModalComponent } from '../shared/modal/modal.component';
 
+const SIDEBAR_COLLAPSED_KEY = 'cartera_sidebar_collapsed';
+
 @Component({
   selector: 'app-shell', standalone: true, imports: [RouterOutlet, RouterLink, RouterLinkActive, ReactiveFormsModule, ModalComponent],
   template: `
-    <div class="shell" [class.menu-open]="menuOpen()">
+    <div class="shell" [class.menu-open]="menuOpen()" [class.collapsed]="collapsed()">
       <aside>
-        <div class="brand"><div class="brand-mark">IR</div><div><strong>Inversiones<br>La Roca</strong><span>Cartera inteligente</span></div></div>
+        <div class="brand"><div class="brand-mark">IR</div><div class="brand-text"><strong>Inversiones<br>La Roca</strong><span>Cartera inteligente</span></div></div>
+        <button class="collapse-toggle" type="button" [attr.aria-label]="collapsed()?'Expandir menú':'Colapsar menú'" [title]="collapsed()?'Expandir menú':'Colapsar menú'" (click)="toggleCollapsed()"><span>{{ collapsed() ? '»' : '«' }}</span></button>
         <nav>
           @for (item of navigation; track item.path) {
-            @if (!item.admin || auth.isAdmin()) { <a [routerLink]="item.path" routerLinkActive="active" (click)="menuOpen.set(false)"><span class="nav-icon">{{ item.icon }}</span>{{ item.label }}</a> }
+            @if (!item.admin || auth.isAdmin()) { <a [routerLink]="item.path" routerLinkActive="active" [title]="item.label" (click)="menuOpen.set(false)"><span class="nav-icon">{{ item.icon }}</span><span class="nav-label">{{ item.label }}</span></a> }
           }
         </nav>
-        <div class="profile"><div class="avatar">{{ initials }}</div><div><strong>{{ auth.user()?.fullName }}</strong><span>{{ auth.user()?.role }}</span></div></div>
-        <button class="logout" type="button" (click)="auth.logout()"><span class="nav-icon">↗</span>Salir</button>
+        <div class="profile"><div class="avatar">{{ initials }}</div><div class="profile-text"><strong>{{ auth.user()?.fullName }}</strong><span>{{ auth.user()?.role }}</span></div></div>
+        <button class="logout" type="button" [title]="'Salir'" (click)="auth.logout()"><span class="nav-icon">↗</span><span class="nav-label">Salir</span></button>
       </aside>
       <main>
         <header class="topbar"><button class="menu" type="button" (click)="menuOpen.set(!menuOpen())">☰</button><div><span>{{ today }}</span></div><div class="top-user">{{ auth.user()?.username }}</div></header>
@@ -42,6 +45,7 @@ import { ModalComponent } from '../shared/modal/modal.component';
 })
 export class AppShellComponent {
   readonly auth = inject(AuthService); readonly toastService = inject(ToastService); readonly menuOpen = signal(false);
+  readonly collapsed = signal(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
   private readonly fb = inject(FormBuilder);
   readonly passwordModal = signal(Boolean(this.auth.user()?.mustChangePassword));
   readonly passwordLoading = signal(false);
@@ -56,10 +60,11 @@ export class AppShellComponent {
     { path: '/prestamos', label: 'Préstamos', icon: 'PR' }, { path: '/pagos', label: 'Pagos', icon: 'PG' },
     { path: '/cartera', label: 'Cartera', icon: 'CA' }, { path: '/rutas', label: 'Rutas', icon: 'RT' },
     { path: '/cierre-caja', label: 'Cierre de caja', icon: 'CC' }, { path: '/configuracion', label: 'Configuración', icon: 'CF', admin: true },
-    { path: '/usuarios', label: 'Usuarios', icon: 'US', admin: true },
+    { path: '/usuarios', label: 'Usuarios', icon: 'US', admin: true }, { path: '/backups', label: 'Backups', icon: 'BK', admin: true },
   ];
   readonly today = new Intl.DateTimeFormat('es-CO', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
   get initials() { return (this.auth.user()?.fullName ?? 'US').split(' ').slice(0, 2).map((part) => part[0]).join('').toUpperCase(); }
+  toggleCollapsed() { const next = !this.collapsed(); this.collapsed.set(next); localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0'); }
   changePassword() {
     if (this.passwordForm.invalid) {
       this.passwordForm.markAllAsTouched();

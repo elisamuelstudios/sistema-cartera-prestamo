@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, DataSource, Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import { InstallmentStatus, LoanStatus } from '../common/enums';
 import { nextCode, toMoney } from '../common/utils/codes';
@@ -26,7 +26,9 @@ export class PaymentsService {
   ) {}
 
   async findAll(
-    search = '',
+    receipt = '',
+    clientName = '',
+    identification = '',
     page = 1,
     pageSize = 25,
     method = '',
@@ -43,19 +45,19 @@ export class PaymentsService {
     if (method) query.andWhere('payment.method = :method', { method });
     if (routeId) query.andWhere('payment.routeId = :routeId', { routeId });
     if (loanId) query.andWhere('payment.loanId = :loanId', { loanId });
-    if (search.trim()) {
-      const value = `%${search.trim()}%`;
+    if (receipt.trim())
+      query.andWhere('payment.receipt ILIKE :receipt', {
+        receipt: `%${receipt.trim()}%`,
+      });
+    if (clientName.trim())
       query.andWhere(
-        new Brackets((where) =>
-          where
-            .where('payment.receipt ILIKE :value', { value })
-            .orWhere('loan.number ILIKE :value', { value })
-            .orWhere('client.firstNames ILIKE :value', { value })
-            .orWhere('client.lastNames ILIKE :value', { value })
-            .orWhere('client.identification ILIKE :value', { value }),
-        ),
+        "(client.firstNames ILIKE :clientName OR client.lastNames ILIKE :clientName OR CONCAT(client.firstNames, ' ', client.lastNames) ILIKE :clientName)",
+        { clientName: `%${clientName.trim()}%` },
       );
-    }
+    if (identification.trim())
+      query.andWhere('client.identification ILIKE :identification', {
+        identification: `%${identification.trim()}%`,
+      });
     const total = await query.getCount();
     const items = await query
       .skip((page - 1) * pageSize)

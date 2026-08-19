@@ -143,15 +143,22 @@ export class CashClosuresService {
     const mochi = toMoney(summary.mochi);
     const capitalWithdrawal = toMoney(dto.capitalWithdrawal);
     const cashToInternal = toMoney(dto.cashToInternal);
+    // AbonoEfectivo: efectivo adicional que entra a caja (como otherIncome).
+    // CargaDeudaInterna: efectivo que sale de caja para cubrir un deudor
+    // interno (como capitalWithdrawal/cashToInternal).
+    const cashAbono = toMoney(dto.cashAbono);
+    const internalDebtCharge = toMoney(dto.internalDebtCharge);
     const finalCash = toMoney(
       initial +
         received +
         insurance +
         otherIncome +
-        sales -
+        sales +
+        cashAbono -
         expenses -
         capitalWithdrawal -
-        cashToInternal,
+        cashToInternal -
+        internalDebtCharge,
     );
 
     const billsSubtotal = toMoney(
@@ -196,6 +203,9 @@ export class CashClosuresService {
       capitalWithdrawal,
       cashToInternal,
       collectorCarryCash: toMoney(dto.collectorCarryCash),
+      internalDebtorName: dto.internalDebtorName?.trim() || null,
+      internalDebtCharge,
+      cashAbono,
       salesPayments: summary.salesPayments,
       cancelledPayments: summary.cancelledPayments,
       refinancedAmount: summary.refinancedAmount,
@@ -235,6 +245,8 @@ export class CashClosuresService {
         collectorCarryCash: toMoney(dto.collectorCarryCash),
         totalSales: sales,
         mochi,
+        internalDebtCharge,
+        cashAbono,
         finalCash,
         cashCount,
         difference: toMoney(cashCount - finalCash),

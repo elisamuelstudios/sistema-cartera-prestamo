@@ -8,8 +8,12 @@ import { LoansService } from './loans.service';
 @ApiTags('loans') @ApiBearerAuth() @Controller('loans')
 export class LoansController {
   constructor(private readonly service: LoansService) {}
-  @Get() findAll(@Query('search') search = '', @Query('status') status = '', @Query('page') page = '1', @Query('pageSize') pageSize = '25', @Query('clientId') clientId = '', @Query('routeId') routeId = '') {
-    return this.service.findAll(search, status, Math.max(1, Number(page)), Math.min(100, Math.max(1, Number(pageSize))), clientId, routeId);
+  @Get() findAll(
+    @Query('code') code = '', @Query('clientName') clientName = '', @Query('identification') identification = '',
+    @Query('status') status = '', @Query('page') page = '1', @Query('pageSize') pageSize = '25',
+    @Query('clientId') clientId = '', @Query('routeId') routeId = '',
+  ) {
+    return this.service.findAll(code, clientName, identification, status, Math.max(1, Number(page)), Math.min(100, Math.max(1, Number(pageSize))), clientId, routeId);
   }
   @Get(':id') findOne(@Param('id') id: string) { return this.service.findOne(id); }
   @Post('preview') preview(@Body() dto: LoanPreviewDto) { return this.service.preview(dto); }

@@ -8,8 +8,12 @@ import { PaymentsService } from './payments.service';
 @ApiTags('payments') @ApiBearerAuth() @Controller('payments')
 export class PaymentsController {
   constructor(private readonly service: PaymentsService) {}
-  @Get() findAll(@Query('search') search = '', @Query('page') page = '1', @Query('pageSize') pageSize = '25', @Query('method') method = '', @Query('routeId') routeId = '', @Query('loanId') loanId = '') {
-    return this.service.findAll(search, Math.max(1, Number(page)), Math.min(100, Math.max(1, Number(pageSize))), method, routeId, loanId);
+  @Get() findAll(
+    @Query('receipt') receipt = '', @Query('clientName') clientName = '', @Query('identification') identification = '',
+    @Query('page') page = '1', @Query('pageSize') pageSize = '25',
+    @Query('method') method = '', @Query('routeId') routeId = '', @Query('loanId') loanId = '',
+  ) {
+    return this.service.findAll(receipt, clientName, identification, Math.max(1, Number(page)), Math.min(100, Math.max(1, Number(pageSize))), method, routeId, loanId);
   }
   @Get(':id') findOne(@Param('id') id: string) { return this.service.findOne(id); }
   @Post() create(@Body() dto: CreatePaymentDto, @CurrentUser() user: AuthenticatedUser) { return this.service.create(dto, user.username); }

@@ -23,6 +23,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+# pg_dump para el módulo de Backups (misma versión mayor que el servicio `db`).
+RUN apk add --no-cache postgresql17-client
+
 COPY --from=build /prod/api ./
 
 EXPOSE 3000

@@ -32,6 +32,9 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cartera_local_2026}
       JWT_SECRET: ${JWT_SECRET:-cambiar-esta-clave-antes-de-produccion}
       TZ: ${APP_TIMEZONE:-America/Bogota}
+      BACKUPS_DIR: /app/backups
+    volumes:
+      - ./backups:/app/backups
     depends_on:
       db:
         condition: service_healthy

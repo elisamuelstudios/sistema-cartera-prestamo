@@ -81,6 +81,22 @@ export class CashClose {
   @Column({ type: 'numeric', precision: 16, scale: 2, default: 0 })
   mochi!: number;
   @Column({
+    name: 'internal_debt_charge',
+    type: 'numeric',
+    precision: 16,
+    scale: 2,
+    default: 0,
+  })
+  internalDebtCharge!: number;
+  @Column({
+    name: 'cash_abono',
+    type: 'numeric',
+    precision: 16,
+    scale: 2,
+    default: 0,
+  })
+  cashAbono!: number;
+  @Column({
     name: 'final_cash',
     type: 'numeric',
     precision: 16,

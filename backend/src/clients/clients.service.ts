@@ -19,12 +19,15 @@ export class ClientsService {
   ) {}
 
   async findAll(
-    search = '',
+    code = '',
+    name = '',
+    identification = '',
     status = '',
     page = 1,
     pageSize = 25,
     collectable = false,
     routeId = '',
+    q = '',
   ) {
     const query = this.repository
       .createQueryBuilder('client')
@@ -40,20 +43,31 @@ export class ClientsService {
     if (status) query.andWhere('client.status = :status', { status });
     if (routeId) query.andWhere('client.routeId = :routeId', { routeId });
     if (collectable) query.andWhere('loan.id IS NOT NULL');
-    if (search.trim()) {
-      const value = `%${search.trim()}%`;
+    if (code.trim())
+      query.andWhere('client.code ILIKE :code', { code: `%${code.trim()}%` });
+    if (name.trim())
+      query.andWhere(
+        "(client.firstNames ILIKE :name OR client.lastNames ILIKE :name OR CONCAT(client.firstNames, ' ', client.lastNames) ILIKE :name)",
+        { name: `%${name.trim()}%` },
+      );
+    if (identification.trim())
+      query.andWhere('client.identification ILIKE :identification', {
+        identification: `%${identification.trim()}%`,
+      });
+    // Búsqueda rápida (selector de cliente en Préstamos/Pagos): un solo campo,
+    // coincide con varias columnas a la vez. Distinta de los filtros por
+    // columna de arriba, que son AND entre sí.
+    if (q.trim()) {
+      const value = `%${q.trim()}%`;
       query.andWhere(
         new Brackets((where) =>
           where
-            .where('client.code ILIKE :value', { value })
-            .orWhere('client.firstNames ILIKE :value', { value })
-            .orWhere('client.lastNames ILIKE :value', { value })
-            .orWhere('client.identification ILIKE :value', { value })
-            .orWhere('client.primaryPhone ILIKE :value', { value })
-            .orWhere('client.city ILIKE :value', { value })
-            .orWhere('client.status ILIKE :value', { value })
-            .orWhere('route.name ILIKE :value', { value })
-            .orWhere('loan.status ILIKE :value', { value }),
+            .where('client.code ILIKE :q', { q: value })
+            .orWhere('client.firstNames ILIKE :q', { q: value })
+            .orWhere('client.lastNames ILIKE :q', { q: value })
+            .orWhere('client.identification ILIKE :q', { q: value })
+            .orWhere('client.primaryPhone ILIKE :q', { q: value })
+            .orWhere('route.name ILIKE :q', { q: value }),
         ),
       );
     }

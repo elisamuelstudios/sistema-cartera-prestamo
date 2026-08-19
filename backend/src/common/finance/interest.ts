@@ -12,6 +12,14 @@ import { roundBankers, toMoney } from './money';
  *   - TasaPeriodoCredito
  *   - CalcularFechaVencimiento
  *
+ * CUOTA PACTADA — réplica del formulario interactivo `frmPrestamos` (no del
+ * macro de cierre por lotes): el número de cuotas **nunca** se recalcula a
+ * partir de la cuota. Si el usuario edita la cuota, se resuelve (por
+ * bisección, como `CalcularTasaDesdeCuota`) la tasa de interés que hace que
+ * `cuota × cuotas` coincida con el total — igual que `ActualizarInteresDesdeCuota`
+ * en el Excel real. Verificado contra el archivo en producción: el botón
+ * Guardar nunca envía una cuota pactada aparte, solo la tasa ya resuelta.
+ *
  * CONVENCIÓN DE TASA: `monthlyRate` es un decimal **mensual**.
  *   28 % mensual  -> 0.28
  *   122,22 % mensual -> 1.2222
@@ -153,6 +161,12 @@ export interface ScheduleResult {
   total: number;
   installmentAmount: number;
   lastInstallment: number;
+  /**
+   * Tasa mensual efectivamente usada. Coincide con `monthlyRate` de entrada
+   * salvo que se haya pactado una cuota: ahí es la tasa resuelta por
+   * `solveMonthlyRateForInstallment`.
+   */
+  monthlyRate: number;
 }
 
 /**
@@ -189,6 +203,42 @@ export function totalInterest(input: {
   return roundBankers(accumulated);
 }
 
+/**
+ * Excel: `CalcularTasaDesdeCuota`. Dado que se pactó una cuota fija, resuelve
+ * por bisección la tasa mensual que hace que `cuota × cuotas` (el total
+ * acordado) coincida con `principal + totalInterest(...)`. `totalInterest`
+ * es monótona creciente en la tasa para ambos tipos de interés, así que la
+ * bisección converge siempre.
+ */
+export function solveMonthlyRateForInstallment(input: {
+  principal: number;
+  installmentCount: number;
+  frequency: PaymentFrequency;
+  interestType: InterestType;
+  targetInstallment: number;
+}): number {
+  const { principal, installmentCount, frequency, interestType } = input;
+  const targetInstallment = toMoney(input.targetInstallment);
+  const target = toMoney(targetInstallment * installmentCount);
+  if (principal <= 0 || installmentCount <= 0 || target <= principal) return 0;
+
+  const totalAt = (rate: number) =>
+    principal +
+    totalInterest({ principal, installmentCount, frequency, monthlyRate: rate, interestType });
+
+  let low = 0;
+  let high = 1;
+  while (totalAt(high) < target && high < 1000) {
+    high *= 2;
+  }
+  for (let i = 0; i < 60; i += 1) {
+    const mid = (low + high) / 2;
+    if (totalAt(mid) < target) low = mid;
+    else high = mid;
+  }
+  return (low + high) / 2;
+}
+
 /** Excel: `CalcularFechaVencimiento`. */
 export function dueDateFor(loanDate: string, frequency: PaymentFrequency, number: number): string {
   const date = new Date(`${loanDate}T12:00:00Z`);
@@ -211,7 +261,7 @@ export function dueDateFor(loanDate: string, frequency: PaymentFrequency, number
  */
 export function buildSchedule(input: ScheduleInput): ScheduleResult {
   const principal = toMoney(input.principal);
-  const monthlyRate = Number(input.monthlyRate);
+  let monthlyRate = Number(input.monthlyRate);
   const interestType: InterestType = isInterestType(input.interestType)
     ? input.interestType
     : 'Fijo';
@@ -220,24 +270,35 @@ export function buildSchedule(input: ScheduleInput): ScheduleResult {
     throw new RangeError('La tasa de interés no puede ser negativa');
   }
 
-  const requestedCount = Math.max(1, Math.round(Number(input.installmentCount) || 0));
+  // El número de cuotas SIEMPRE es el indicado; nunca se recalcula a partir
+  // de la cuota pactada (ver nota de "CUOTA PACTADA" arriba).
+  const installmentCount = Math.max(1, Math.round(Number(input.installmentCount) || 0));
+
+  const agreed = toMoney(input.agreedInstallment);
+  const useAgreed = agreed > 0;
+  if (useAgreed) {
+    monthlyRate = solveMonthlyRateForInstallment({
+      principal,
+      installmentCount,
+      frequency: input.frequency,
+      interestType,
+      targetInstallment: agreed,
+    });
+  }
+
   const interest = totalInterest({
     principal,
-    installmentCount: requestedCount,
+    installmentCount,
     frequency: input.frequency,
     monthlyRate,
     interestType,
   });
   const total = toMoney(principal + interest);
 
-  const agreed = toMoney(input.agreedInstallment);
-  const useAgreed = agreed > 0;
-  const installmentCount = useAgreed ? Math.max(1, Math.ceil(total / agreed)) : requestedCount;
-
   const rows: ScheduleRow[] =
-    interestType === 'Sobre saldo' && !useAgreed
+    interestType === 'Sobre saldo'
       ? decliningBalanceRows(principal, installmentCount, monthlyRate, input.frequency)
-      : flatRows(principal, interest, installmentCount, useAgreed ? agreed : undefined);
+      : flatRows(principal, interest, installmentCount);
 
   let balance = total;
   for (const row of rows) {
@@ -253,75 +314,36 @@ export function buildSchedule(input: ScheduleInput): ScheduleResult {
     total,
     installmentAmount: rows[0]?.amount ?? 0,
     lastInstallment: rows[rows.length - 1]?.amount ?? 0,
+    monthlyRate,
   };
 }
 
 /**
- * Interés fijo repartido entre las cuotas. Réplica exacta del Excel cuando el
- * número de cuotas es el que manda; cuando manda el valor de cuota pactado, el
- * interés se reparte proporcional al valor de cada cuota.
+ * Interés fijo repartido en partes iguales entre las cuotas: capital =
+ * Round(capital/n), interés = Round(interésTotal/n), y la última cuota
+ * absorbe ambos residuos.
  */
-function flatRows(
-  principal: number,
-  interest: number,
-  installmentCount: number,
-  agreedInstallment?: number,
-): ScheduleRow[] {
+function flatRows(principal: number, interest: number, installmentCount: number): ScheduleRow[] {
   const rows: ScheduleRow[] = [];
-  const total = toMoney(principal + interest);
-
-  if (agreedInstallment === undefined) {
-    // Excel: capital = Round(capital/n), interés = Round(interésTotal/n),
-    // y la última cuota absorbe ambos residuos.
-    const capitalUnit = roundBankers(principal / installmentCount);
-    const interestUnit = roundBankers(interest / installmentCount);
-    let capitalLeft = principal;
-    let interestLeft = interest;
-
-    for (let number = 1; number <= installmentCount; number += 1) {
-      const last = number === installmentCount;
-      const capital = last ? toMoney(capitalLeft) : capitalUnit;
-      const rowInterest = last ? toMoney(interestLeft) : interestUnit;
-      capitalLeft = toMoney(capitalLeft - capital);
-      interestLeft = toMoney(interestLeft - rowInterest);
-      rows.push({
-        number,
-        dueDate: '',
-        capital,
-        interest: Math.max(0, rowInterest),
-        amount: toMoney(capital + Math.max(0, rowInterest)),
-        remainingBalance: 0,
-      });
-    }
-    return rows;
-  }
-
-  // Cuota pactada: cada cuota vale lo acordado, la última absorbe el residuo.
-  let amountLeft = total;
+  const capitalUnit = roundBankers(principal / installmentCount);
+  const interestUnit = roundBankers(interest / installmentCount);
   let capitalLeft = principal;
   let interestLeft = interest;
 
   for (let number = 1; number <= installmentCount; number += 1) {
     const last = number === installmentCount;
-    const amount = last ? toMoney(amountLeft) : Math.min(agreedInstallment, amountLeft);
-    const rowInterest = last
-      ? toMoney(interestLeft)
-      : Math.min(interestLeft, roundBankers((amount * interest) / (total || 1)));
-    const capital = last ? toMoney(capitalLeft) : toMoney(amount - rowInterest);
-
-    amountLeft = toMoney(amountLeft - amount);
+    const capital = last ? toMoney(capitalLeft) : capitalUnit;
+    const rowInterest = last ? toMoney(interestLeft) : interestUnit;
     capitalLeft = toMoney(capitalLeft - capital);
     interestLeft = toMoney(interestLeft - rowInterest);
-
     rows.push({
       number,
       dueDate: '',
       capital,
       interest: Math.max(0, rowInterest),
-      amount,
+      amount: toMoney(capital + Math.max(0, rowInterest)),
       remainingBalance: 0,
     });
-    if (amountLeft <= 0) break;
   }
   return rows;
 }

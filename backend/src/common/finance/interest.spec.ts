@@ -282,7 +282,15 @@ describe('buildSchedule — interés Sobre saldo', () => {
   });
 });
 
-describe('buildSchedule — cuota pactada', () => {
+/**
+ * Cuota pactada — réplica del formulario interactivo real (`frmPrestamos`,
+ * verificado contra `Sistema_Cartera_Eli.xlsm` en producción): las cuotas
+ * NUNCA cambian; lo que se resuelve es la tasa/el interés. Antes, el motor
+ * recalculaba el número de cuotas a partir del total (`ceil(total/cuota)`),
+ * lo que producía un interés que no correspondía ni al plazo original ni al
+ * real — ese comportamiento viejo ya no existe.
+ */
+describe('buildSchedule — cuota pactada (Fijo)', () => {
   const schedule = buildSchedule({
     principal: 150_000,
     installmentCount: 32,
@@ -293,27 +301,69 @@ describe('buildSchedule — cuota pactada', () => {
     agreedInstallment: 5_000,
   });
 
-  it('deriva el número de cuotas del total', () => {
-    // 192.000 / 5.000 = 38,4 -> 39 cuotas
-    expect(schedule.installmentCount).toBe(39);
-    expect(schedule.rows).toHaveLength(39);
+  it('el número de cuotas NUNCA cambia, se mantiene el original', () => {
+    expect(schedule.installmentCount).toBe(32);
+    expect(schedule.rows).toHaveLength(32);
   });
 
-  it('respeta el valor pactado salvo en la última cuota', () => {
-    expect(schedule.rows[0].amount).toBe(5_000);
-    expect(schedule.rows[37].amount).toBe(5_000);
-    expect(schedule.rows[38].amount).toBe(2_000);
+  it('el total resuelto coincide con cuota × cuotas (160.000)', () => {
+    expect(schedule.total).toBeCloseTo(160_000, -1);
+  });
+
+  it('todas las cuotas quedan en el valor pactado', () => {
+    for (const row of schedule.rows) {
+      expect(row.amount).toBeCloseTo(5_000, -1);
+    }
   });
 
   it('mantiene las invariantes de suma', () => {
     const sum = (pick: (row: (typeof schedule.rows)[number]) => number) =>
       Math.round(schedule.rows.reduce((acc, row) => acc + pick(row), 0) * 100) / 100;
-    expect(sum((row) => row.amount)).toBe(192_000);
     expect(sum((row) => row.capital)).toBe(150_000);
-    expect(sum((row) => row.interest)).toBe(42_000);
+    expect(sum((row) => row.amount)).toBe(schedule.total);
     for (const row of schedule.rows) {
       expect(row.amount).toBe(Math.round((row.capital + row.interest) * 100) / 100);
     }
+  });
+
+  it('si la cuota sube, el interés total sube; si baja, el interés baja', () => {
+    const base = { principal: 150_000, installmentCount: 32, loanDate: '2026-08-03', frequency: PaymentFrequency.DAILY, monthlyRate: 0.28, interestType: 'Fijo' as const };
+    const menor = buildSchedule({ ...base, agreedInstallment: 4_500 });
+    const mayor = buildSchedule({ ...base, agreedInstallment: 5_500 });
+    expect(menor.totalInterest).toBeLessThan(schedule.totalInterest);
+    expect(mayor.totalInterest).toBeGreaterThan(schedule.totalInterest);
+  });
+});
+
+describe('buildSchedule — cuota pactada (Sobre saldo)', () => {
+  const schedule = buildSchedule({
+    principal: 150_000,
+    installmentCount: 32,
+    loanDate: '2026-08-03',
+    frequency: PaymentFrequency.DAILY,
+    monthlyRate: 0.28,
+    interestType: 'Sobre saldo',
+    agreedInstallment: 6_000,
+  });
+
+  it('el número de cuotas tampoco cambia con Sobre saldo', () => {
+    expect(schedule.installmentCount).toBe(32);
+    expect(schedule.rows).toHaveLength(32);
+  });
+
+  it('el interés sigue decreciendo cuota a cuota (saldo decreciente real, no reparto plano)', () => {
+    for (let i = 1; i < schedule.rows.length; i += 1) {
+      expect(schedule.rows[i].interest).toBeLessThanOrEqual(schedule.rows[i - 1].interest);
+    }
+  });
+
+  it('amortiza el capital completo', () => {
+    const capital = schedule.rows.reduce((acc, row) => acc + row.capital, 0);
+    expect(Math.round(capital)).toBe(150_000);
+  });
+
+  it('el total resuelto coincide aproximadamente con cuota × cuotas (192.000)', () => {
+    expect(schedule.total).toBeCloseTo(192_000, -1);
   });
 });
 

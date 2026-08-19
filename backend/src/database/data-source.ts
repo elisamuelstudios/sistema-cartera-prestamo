@@ -15,6 +15,7 @@ import {
 import { InitialSchema1754560000000 } from './migrations/1754560000000-initial-schema';
 import { PaymentBalanceIndexes1786466000000 } from './migrations/1786466000000-payment-balance-indexes';
 import { ExcelLogicAlignment1786813200000 } from './migrations/1786813200000-excel-logic-alignment';
+import { CashClosuresInternalDebt1787200000000 } from './migrations/1787200000000-cash-closures-internal-debt';
 
 export default new DataSource({
   type: 'postgres',
@@ -39,6 +40,7 @@ export default new DataSource({
     InitialSchema1754560000000,
     PaymentBalanceIndexes1786466000000,
     ExcelLogicAlignment1786813200000,
+    CashClosuresInternalDebt1787200000000,
   ],
   synchronize: false,
 });

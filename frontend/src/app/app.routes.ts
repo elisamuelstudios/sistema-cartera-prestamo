@@ -16,6 +16,7 @@ export const routes: Routes = [
       { path: 'cierre-caja', title: 'Cierre de caja', loadComponent: () => import('./features/cash-closures/cash-closures.component').then((m) => m.CashClosuresComponent) },
       { path: 'configuracion', title: 'Configuración', canActivate: [adminGuard], loadComponent: () => import('./features/settings/settings.component').then((m) => m.SettingsComponent) },
       { path: 'usuarios', title: 'Usuarios', canActivate: [adminGuard], loadComponent: () => import('./features/users/users.component').then((m) => m.UsersComponent) },
+      { path: 'backups', title: 'Backups', canActivate: [adminGuard], loadComponent: () => import('./features/backups/backups.component').then((m) => m.BackupsComponent) },
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
     ],
   },

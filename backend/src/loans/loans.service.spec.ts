@@ -25,7 +25,10 @@ describe('LoansService financial agreement', () => {
     expect(result.warnings).toHaveLength(1);
   });
 
-  it('keeps the agreed interest and recalculates the payment count from the installment', () => {
+  it('keeps the installment count fixed and solves the interest rate from the agreed installment', () => {
+    // Réplica del formulario real: el número de cuotas nunca cambia; la tasa
+    // se resuelve para que cuota × cuotas = total (500.000 + interés).
+    // 16.000 × 45 = 720.000 -> interés = 220.000 -> tasa = 220.000/500.000 = 44 %.
     const result = service.preview({
       disbursedAmount: 500_000,
       installmentCount: 45,
@@ -35,12 +38,12 @@ describe('LoansService financial agreement', () => {
       insurance: 0,
       additionalCosts: 0,
     });
-    expect(result.interestRate).toBe(0.4);
-    expect(result.generatedInterest).toBe(200_000);
-    expect(result.total).toBe(700_000);
-    expect(result.dailyInstallment).toBe(16_000);
-    expect(result.installmentCount).toBe(44);
-    expect(result.lastInstallment).toBe(12_000);
+    expect(result.installmentCount).toBe(45);
+    expect(result.interestRate).toBeCloseTo(0.44, 4);
+    expect(result.generatedInterest).toBeCloseTo(220_000, -1);
+    expect(result.total).toBeCloseTo(720_000, -1);
+    expect(result.dailyInstallment).toBeCloseTo(16_000, -1);
+    expect(result.lastInstallment).toBeCloseTo(16_000, -1);
   });
 
   it('rejects a negative interest', () => {

@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, DataSource, Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import {
   ClientStatus,
@@ -49,7 +49,9 @@ export class LoansService {
   ) {}
 
   async findAll(
-    search = '',
+    code = '',
+    clientName = '',
+    identification = '',
     status = '',
     page = 1,
     pageSize = 25,
@@ -84,19 +86,17 @@ export class LoansService {
     if (status) query.andWhere('loan.status = :status', { status });
     if (clientId) query.andWhere('loan.clientId = :clientId', { clientId });
     if (routeId) query.andWhere('loan.routeId = :routeId', { routeId });
-    if (search.trim()) {
-      const value = `%${search.trim()}%`;
+    if (code.trim())
+      query.andWhere('loan.number ILIKE :code', { code: `%${code.trim()}%` });
+    if (clientName.trim())
       query.andWhere(
-        new Brackets((where) =>
-          where
-            .where('loan.number ILIKE :value', { value })
-            .orWhere('client.firstNames ILIKE :value', { value })
-            .orWhere('client.lastNames ILIKE :value', { value })
-            .orWhere('client.identification ILIKE :value', { value })
-            .orWhere('route.name ILIKE :value', { value }),
-        ),
+        "(client.firstNames ILIKE :clientName OR client.lastNames ILIKE :clientName OR CONCAT(client.firstNames, ' ', client.lastNames) ILIKE :clientName)",
+        { clientName: `%${clientName.trim()}%` },
       );
-    }
+    if (identification.trim())
+      query.andWhere('client.identification ILIKE :identification', {
+        identification: `%${identification.trim()}%`,
+      });
     const total = await query.getCount();
     const items = await query
       .skip((page - 1) * pageSize)
@@ -352,7 +352,10 @@ export class LoansService {
       );
     }
 
-    const normalizedRate = Math.round(rate * 1_000_000) / 1_000_000;
+    // Si se pactó una cuota, buildSchedule() resolvió una tasa distinta a la
+    // tipeada (el número de cuotas nunca cambia; lo que se ajusta es la
+    // tasa/el interés). Esa es la tasa real del préstamo, no la de entrada.
+    const normalizedRate = Math.round(schedule.monthlyRate * 1_000_000) / 1_000_000;
     return {
       interestRate: normalizedRate,
       interestType,

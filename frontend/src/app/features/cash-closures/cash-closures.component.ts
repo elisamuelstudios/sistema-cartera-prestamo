@@ -23,8 +23,8 @@ interface CloseSummary {
   imports: [ReactiveFormsModule, CurrencyPipe, DatePipe, DateTimePipe, PercentPipe, ModalComponent, MoneyInputDirective],
   template: `
     <div class="page-heading"><div><h1>Cierre de caja</h1><p>Captura el movimiento completo y precarga el informe desde pagos, cuotas y refinanciaciones.</p></div><button class="btn btn-primary" (click)="openNew()">＋ Nuevo cierre</button></div>
-    <section class="panel"><div class="toolbar"><select (change)="filterRoute($event)"><option value="">Todas las rutas</option>@for (route of routes(); track route.id) {<option [value]="route.id">{{route.code}} · {{route.name}}</option>}</select></div><div class="table-wrap"><table><thead><tr><th>Cierre</th><th>Fecha</th><th>Registrado</th><th>Ruta</th><th>Cobrador</th><th>Esperado</th><th>Recibido</th><th>Efectividad</th><th>Caja final</th><th>Diferencia</th></tr></thead><tbody>
-      @for (item of closures(); track item.id) {<tr><td><strong>{{item.number}}</strong></td><td>{{item.date|date:'dd/MM/yyyy'}}</td><td>{{item.createdAt|appDateTime}}</td><td>{{item.route?.code}}</td><td>{{item.collector||'—'}}</td><td class="money">{{item.expectedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money">{{item.receivedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td>{{item.effectiveness|percent:'1.0-1'}}</td><td class="money">{{item.finalCash|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money" [class.text-red]="item.difference!==0">{{item.difference|currency:'COP':'symbol-narrow':'1.0-0'}}</td></tr>}
+    <section class="panel"><div class="toolbar"><select (change)="filterRoute($event)"><option value="">Todas las rutas</option>@for (route of routes(); track route.id) {<option [value]="route.id">{{route.code}} · {{route.name}}</option>}</select></div><div class="table-wrap"><table><thead><tr><th>Cierre</th><th>Fecha</th><th>Registrado</th><th>Ruta</th><th>Cobrador</th><th>Esperado</th><th>Recibido</th><th>Abono efectivo</th><th>Carga deuda interna</th><th>Efectividad</th><th>Caja final</th><th>Diferencia</th></tr></thead><tbody>
+      @for (item of closures(); track item.id) {<tr><td><strong>{{item.number}}</strong></td><td>{{item.date|date:'dd/MM/yyyy'}}</td><td>{{item.createdAt|appDateTime}}</td><td>{{item.route?.code}}</td><td>{{item.collector||'—'}}</td><td class="money">{{item.expectedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money">{{item.receivedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money">{{item.cashAbono|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money">{{item.internalDebtCharge|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td>{{item.effectiveness|percent:'1.0-1'}}</td><td class="money">{{item.finalCash|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money" [class.text-red]="item.difference!==0">{{item.difference|currency:'COP':'symbol-narrow':'1.0-0'}}</td></tr>}
     </tbody></table>@if (!closures().length) {<div class="empty">No hay cierres registrados.</div>}</div></section>
 
     <app-modal [open]="modal()" [wide]="true" title="Nuevo cierre de caja" (closed)="modal.set(false)">
@@ -41,6 +41,9 @@ interface CloseSummary {
           <div class="field"><label>Recibido para retiro de capital</label><input appMoneyInput type="text" inputmode="numeric" formControlName="capitalWithdrawal"></div>
           <div class="field"><label>Guardar en caja interna</label><input appMoneyInput type="text" inputmode="numeric" formControlName="cashToInternal"></div>
           <div class="field"><label>Efectivo que se lleva el cobrador</label><input appMoneyInput type="text" inputmode="numeric" formControlName="collectorCarryCash"></div>
+          <div class="field"><label>Abono en efectivo</label><input appMoneyInput type="text" inputmode="numeric" formControlName="cashAbono"><span class="hint">Efectivo adicional que entra a caja.</span></div>
+          <div class="field"><label>Deudor interno</label><input formControlName="internalDebtorName" placeholder="Nombre del deudor"></div>
+          <div class="field"><label>Carga deuda interna</label><input appMoneyInput type="text" inputmode="numeric" formControlName="internalDebtCharge"><span class="hint">Efectivo que sale de caja para el deudor interno.</span></div>
         </div></section>
 
         <section class="block"><div class="block-head"><h3>Gastos</h3><strong>{{totalExpenses|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div><div class="form-grid three">
@@ -91,21 +94,22 @@ export class CashClosuresComponent implements OnInit {
     cashBroughtByCollector: [0], baseOne: [0], baseTwo: [0], insuranceIncome: [0], otherIncome: [0], totalSales: [0],
     lunchExpense: [0], snackExpense: [0], stationeryExpense: [0], payrollExpense: [0], fuelExpense: [0], repairExpense: [0], extraExpenses: [0], expenseComments: [''],
     capitalWithdrawal: [0], cashToInternal: [0], collectorCarryCash: [0], mochi: [0],
+    cashAbono: [0], internalDebtorName: [''], internalDebtCharge: [0],
     bills100000: [0], bills50000: [0], bills20000: [0], bills10000: [0], bills5000: [0], bills2000: [0],
     coins1000: [0], coins500: [0], coins200: [0], coins100: [0], coins50: [0], notes: [''],
   });
 
   ngOnInit() { this.catalog.routes(true).subscribe((routes) => this.routes.set(routes)); this.load(); }
   get totalExpenses() { const v = this.form.getRawValue(); return ['lunchExpense','snackExpense','stationeryExpense','payrollExpense','fuelExpense','repairExpense','extraExpenses'].reduce((sum, key) => sum + Number(v[key as keyof typeof v] || 0), 0); }
-  get totalIncome() { const v = this.form.getRawValue(); return Number(this.summary()?.receivedAmount || 0) + Number(v.insuranceIncome || 0) + Number(v.otherIncome || 0) + Number(this.summary()?.totalSales || 0); }
+  get totalIncome() { const v = this.form.getRawValue(); return Number(this.summary()?.receivedAmount || 0) + Number(v.insuranceIncome || 0) + Number(v.otherIncome || 0) + Number(this.summary()?.totalSales || 0) + Number(v.cashAbono || 0); }
   get cashCount() { const v = this.form.getRawValue(); return Number(v.bills100000 || 0)*100000 + Number(v.bills50000 || 0)*50000 + Number(v.bills20000 || 0)*20000 + Number(v.bills10000 || 0)*10000 + Number(v.bills5000 || 0)*5000 + Number(v.bills2000 || 0)*2000 + Number(v.coins1000 || 0)*1000 + Number(v.coins500 || 0)*500 + Number(v.coins200 || 0)*200 + Number(v.coins100 || 0)*100 + Number(v.coins50 || 0)*50; }
-  get calculatedFinal() { const v = this.form.getRawValue(); return Number(this.summary()?.initialCash || 0) + this.totalIncome - this.totalExpenses - Number(v.capitalWithdrawal || 0) - Number(v.cashToInternal || 0); }
+  get calculatedFinal() { const v = this.form.getRawValue(); return Number(this.summary()?.initialCash || 0) + this.totalIncome - this.totalExpenses - Number(v.capitalWithdrawal || 0) - Number(v.cashToInternal || 0) - Number(v.internalDebtCharge || 0); }
   get difference() { return this.cashCount - this.calculatedFinal; }
 
   load(routeId = '') { this.service.closures(routeId).subscribe({ next: (result) => this.closures.set(result), error: (error) => this.toast.error(error) }); }
   filterRoute(event: Event) { this.load((event.target as HTMLSelectElement).value); }
   openNew() {
-    this.form.reset({ routeId: '', date: new Date().toISOString().slice(0, 10), cashBroughtByCollector: 0, baseOne: 0, baseTwo: 0, insuranceIncome: 0, otherIncome: 0, totalSales: 0, lunchExpense: 0, snackExpense: 0, stationeryExpense: 0, payrollExpense: 0, fuelExpense: 0, repairExpense: 0, extraExpenses: 0, expenseComments: '', capitalWithdrawal: 0, cashToInternal: 0, collectorCarryCash: 0, mochi: 0, bills100000: 0, bills50000: 0, bills20000: 0, bills10000: 0, bills5000: 0, bills2000: 0, coins1000: 0, coins500: 0, coins200: 0, coins100: 0, coins50: 0, notes: '' });
+    this.form.reset({ routeId: '', date: new Date().toISOString().slice(0, 10), cashBroughtByCollector: 0, baseOne: 0, baseTwo: 0, insuranceIncome: 0, otherIncome: 0, totalSales: 0, lunchExpense: 0, snackExpense: 0, stationeryExpense: 0, payrollExpense: 0, fuelExpense: 0, repairExpense: 0, extraExpenses: 0, expenseComments: '', capitalWithdrawal: 0, cashToInternal: 0, collectorCarryCash: 0, mochi: 0, cashAbono: 0, internalDebtorName: '', internalDebtCharge: 0, bills100000: 0, bills50000: 0, bills20000: 0, bills10000: 0, bills5000: 0, bills2000: 0, coins1000: 0, coins500: 0, coins200: 0, coins100: 0, coins50: 0, notes: '' });
     this.summary.set(null); this.modal.set(true);
   }
   loadSummary() { const { routeId, date } = this.form.getRawValue(); if (!routeId || !date) { this.summary.set(null); return; } this.service.closeSummary(routeId, date).subscribe({ next: (result) => { this.summary.set(result); this.form.patchValue({ cashBroughtByCollector: result.cashBroughtByCollector ?? 0, totalSales: result.totalSales ?? 0, mochi: result.mochi ?? 0 }); }, error: (error) => this.toast.error(error) }); }

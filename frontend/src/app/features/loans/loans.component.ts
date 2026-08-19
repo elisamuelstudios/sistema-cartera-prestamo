@@ -1,5 +1,5 @@
 import { CurrencyPipe, DatePipe, PercentPipe } from '@angular/common';
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Client, Loan, Route } from '../../core/models/models';
 import { AuthService } from '../../core/services/auth.service';
@@ -9,6 +9,7 @@ import { LoansService, LoanPreviewResult } from '../../core/services/loans.servi
 import { ToastService } from '../../core/services/toast.service';
 import { ClientPickerComponent } from '../../shared/client-picker/client-picker.component';
 import { DateTimePipe } from '../../shared/date-time/date-time.pipe';
+import { FilterBarComponent, FilterField } from '../../shared/filter-bar/filter-bar.component';
 import { ModalComponent } from '../../shared/modal/modal.component';
 import { MoneyInputDirective } from '../../shared/money-input/money-input.directive';
 import { StatusBadgeComponent } from '../../shared/status-badge/status-badge.component';
@@ -18,10 +19,11 @@ type LoanPreview = LoanPreviewResult;
 
 @Component({
   selector: 'app-loans', standalone: true,
-  imports: [ReactiveFormsModule, CurrencyPipe, DatePipe, PercentPipe, DateTimePipe, ClientPickerComponent, ModalComponent, MoneyInputDirective, StatusBadgeComponent],
+  imports: [ReactiveFormsModule, CurrencyPipe, DatePipe, PercentPipe, DateTimePipe, ClientPickerComponent, FilterBarComponent, ModalComponent, MoneyInputDirective, StatusBadgeComponent],
   template: `
     <div class="page-heading"><div><h1>Préstamos</h1><p>Administra desembolsos, condiciones y refinanciaciones.</p></div><div class="actions"><button class="btn btn-secondary" [disabled]="!selected()" (click)="openEdit()">Editar</button><button class="btn btn-secondary" [disabled]="!canRefinance()" (click)="openRefinance()">Refinanciar</button><button class="btn btn-primary" (click)="openNew()">＋ Nuevo préstamo</button></div></div>
-    <section class="panel"><div class="toolbar"><div class="search"><input placeholder="Buscar préstamo, cliente o documento…" (input)="changeSearch($event)"></div><select [value]="status()" (change)="changeStatus($event)"><option value="">Todos los estados</option><option>Activo</option><option>En mora</option><option>Refinanciado</option><option>Cancelado</option></select><select [value]="routeId()" (change)="changeRoute($event)"><option value="">Todas las rutas</option>@for (route of routes(); track route.id) {<option [value]="route.id">{{route.code}} · {{route.name}}</option>}</select></div>
+    <section class="panel">
+      <app-filter-bar [fields]="filterFields()" [values]="filters()" (changed)="onFilterChange($event)"/>
       <div class="table-wrap"><table><thead><tr><th>Código</th><th>Registrado</th><th>Fecha préstamo</th><th>Cliente</th><th>Desembolso</th><th>% interés</th><th>Cuotas</th><th>Total + interés</th><th>Saldo</th><th>Mora</th><th>Ruta</th><th>Estado</th></tr></thead><tbody>
         @for (loan of loans(); track loan.id) {<tr [class.selected]="selected()?.id===loan.id" (click)="selected.set(loan)" (dblclick)="openEdit()"><td><strong>{{loan.number}}</strong></td><td>{{loan.createdAt|appDateTime}}</td><td>{{loan.loanDate|date:'dd/MM/yyyy'}}</td><td>{{loan.clientName}}</td><td class="money">{{loan.disbursedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td>{{loan.interestRate|percent:'1.0-1'}}</td><td><strong>{{loan.installmentProgress}}</strong></td><td class="money">{{loan.totalDebt|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money">{{loan.outstandingPrincipal|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money" [class.text-red]="loan.overdueAmount>0">{{loan.overdueAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td>{{loan.route?.code||'—'}}</td><td><app-status-badge [value]="loan.status"/></td></tr>}
       </tbody></table>@if (!loans().length&&!loading()) {<div class="empty">No se encontraron préstamos.</div>}</div><div class="pagination"><span>{{total()}} préstamos · página {{page()}}</span><div class="buttons"><button [disabled]="page()===1" (click)="go(page()-1)">Anterior</button><button [disabled]="page()*25>=total()" (click)="go(page()+1)">Siguiente</button></div></div>
@@ -42,7 +44,7 @@ type LoanPreview = LoanPreviewResult;
           <div class="field"><label class="required">Número de cuotas</label><input type="number" min="1" formControlName="installmentCount" (input)="schedulePreview()"></div>
           <div class="field"><label class="required">Frecuencia</label><select formControlName="frequency"><option>Diario</option><option>Semanal</option><option>Quincenal</option><option>Mensual</option></select></div>
           <div class="field"><label class="required">Interés (% mensual)</label><input type="number" min="0" step="0.1" formControlName="interestPercent" (input)="schedulePreview()"><span class="hint">Porcentaje <strong>mensual</strong> sobre el capital, hasta 1 decimal.</span></div>
-          <div class="field"><label>Cuota editable</label><input appMoneyInput type="text" inputmode="numeric" formControlName="dailyInstallment" (input)="previewFromInstallment()"><span class="hint">Al cambiarla se recalculan los pagos, no el interés acordado.</span></div>
+          <div class="field"><label>Cuota editable</label><input appMoneyInput type="text" inputmode="numeric" formControlName="dailyInstallment" (input)="previewFromInstallment()"><span class="hint">Al cambiarla se recalcula el interés; el número de cuotas no cambia.</span></div>
           <div class="field"><label>Ruta de cobro</label><select formControlName="routeId"><option value="">Sin asignar</option>@for (route of routes(); track route.id) {<option [value]="route.id">{{route.code}} · {{route.name}}</option>}</select></div>
           <div class="field"><label>Asesor</label><input [value]="advisorUsername" readonly><span class="hint">Usuario que registra o edita la operación.</span></div>
         </div>
@@ -66,9 +68,18 @@ export class LoansComponent implements OnInit {
 
   readonly loans = signal<Loan[]>([]); readonly clients = signal<Client[]>([]); readonly routes = signal<Route[]>([]);
   readonly selected = signal<Loan | null>(null); readonly total = signal(0); readonly page = signal(1);
-  readonly search = signal(''); readonly status = signal(''); readonly routeId = signal(''); readonly loading = signal(false); readonly modal = signal(false);
+  readonly loading = signal(false); readonly modal = signal(false);
   readonly mode = signal<LoanMode>('new'); readonly saving = signal(false); readonly preview = signal<LoanPreview | null>(null);
   readonly clientSearch = signal(''); readonly clientPage = signal(1); readonly clientTotal = signal(0); readonly clientLoading = signal(false);
+
+  readonly filters = signal<Record<string, string>>({ code: '', clientName: '', identification: '', status: '', routeId: '' });
+  readonly filterFields = computed<FilterField[]>(() => [
+    { key: 'code', label: 'Código', type: 'text', placeholder: 'PR-000001' },
+    { key: 'clientName', label: 'Cliente', type: 'text', placeholder: 'Nombre del cliente' },
+    { key: 'identification', label: 'Documento', type: 'text', placeholder: 'Número de documento' },
+    { key: 'status', label: 'Estado', type: 'select', placeholder: 'Todos los estados', options: [{ value: 'Activo', label: 'Activo' }, { value: 'En mora', label: 'En mora' }, { value: 'Refinanciado', label: 'Refinanciado' }, { value: 'Cancelado', label: 'Cancelado' }] },
+    { key: 'routeId', label: 'Ruta', type: 'select', placeholder: 'Todas las rutas', options: this.routes().map((r) => ({ value: r.id, label: `${r.code} · ${r.name}` })) },
+  ]);
 
   readonly form = this.fb.group({
     clientId: ['', Validators.required], requestedAmount: [0, [Validators.required, Validators.min(1)]],
@@ -85,11 +96,9 @@ export class LoansComponent implements OnInit {
   get effectiveInterestPercent() { return this.round1(Number(this.preview()?.interestRate ?? (Number(this.form.getRawValue().interestPercent) / 100)) * 100); }
   private round1(value: number) { return Math.round(value * 10) / 10; }
 
-  load() { this.loading.set(true); this.service.list(this.search(), this.page(), 25, this.status(), this.routeId()).subscribe({ next: (result) => { this.loans.set(result.items); this.total.set(result.total); this.loading.set(false); }, error: (error) => { this.loading.set(false); this.toast.error(error); } }); }
-  loadClients(search = this.clientSearch(), page = this.clientPage()) { this.clientLoading.set(true); this.clientService.list(search, page, 15, 'Activo').subscribe({ next: (result) => { this.clients.set(result.items); this.clientTotal.set(result.total); this.clientLoading.set(false); }, error: (error) => { this.clientLoading.set(false); this.toast.error(error); } }); }
-  changeSearch(event: Event) { this.search.set((event.target as HTMLInputElement).value); clearTimeout(this.searchTimer); this.searchTimer = window.setTimeout(() => { this.page.set(1); this.load(); }, 300); }
-  changeStatus(event: Event) { this.status.set((event.target as HTMLSelectElement).value); this.page.set(1); this.load(); }
-  changeRoute(event: Event) { this.routeId.set((event.target as HTMLSelectElement).value); this.page.set(1); this.load(); }
+  load() { this.loading.set(true); const f = this.filters(); this.service.list(this.page(), 25, { code: f['code'], clientName: f['clientName'], identification: f['identification'], status: f['status'], routeId: f['routeId'] }).subscribe({ next: (result) => { this.loans.set(result.items); this.total.set(result.total); this.loading.set(false); }, error: (error) => { this.loading.set(false); this.toast.error(error); } }); }
+  loadClients(search = this.clientSearch(), page = this.clientPage()) { this.clientLoading.set(true); this.clientService.list(page, 15, { status: 'Activo', q: search }).subscribe({ next: (result) => { this.clients.set(result.items); this.clientTotal.set(result.total); this.clientLoading.set(false); }, error: (error) => { this.clientLoading.set(false); this.toast.error(error); } }); }
+  onFilterChange(event: { key: string; value: string }) { this.filters.update((f) => ({ ...f, [event.key]: event.value })); this.page.set(1); this.load(); }
   go(page: number) { this.page.set(page); this.load(); }
   searchClients(value: string) { this.clientSearch.set(value); clearTimeout(this.searchTimer); this.searchTimer = window.setTimeout(() => { this.clientPage.set(1); this.loadClients(); }, 250); }
   goClients(page: number) { this.clientPage.set(page); this.loadClients(); }

@@ -26,6 +26,10 @@ export class CreateCashCloseDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) collectorCarryCash?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) mochi?: number;
 
+  @IsOptional() @IsString() internalDebtorName?: string;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) internalDebtCharge?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) cashAbono?: number;
+
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) bills100000?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) bills50000?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) bills20000?: number;

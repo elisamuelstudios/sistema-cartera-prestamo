@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { BackupsModule } from './backups/backups.module';
 import { CashClosuresModule } from './cash-closures/cash-closures.module';
 import { ClientsModule } from './clients/clients.module';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -24,7 +25,7 @@ import { UsersModule } from './users/users.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync({ inject: [ConfigService], useFactory: typeOrmConfig }),
-    AuditModule, AuthModule, CashClosuresModule, ClientsModule, DashboardModule, DatabaseModule,
+    AuditModule, AuthModule, BackupsModule, CashClosuresModule, ClientsModule, DashboardModule, DatabaseModule,
     LoansModule, PaymentsModule, PortfolioModule, ReportsModule, RoutesModule, SettingsModule, UsersModule,
   ],
   controllers: [HealthController],

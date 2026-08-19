@@ -9,13 +9,16 @@ export class DashboardService {
     await this.loans.refreshOverdueStatuses();
     const [kpis] = await this.dataSource.query<Array<Record<string, string>>>(`
       SELECT
-        (SELECT COUNT(*) FROM clients) AS clients,
+        (SELECT COUNT(*) FROM clients WHERE status='Activo') AS clients,
         (SELECT COUNT(*) FROM loans WHERE status IN ('Activo','En mora')) AS active_loans,
         (SELECT COALESCE(SUM(outstanding_principal),0) FROM loans WHERE status IN ('Activo','En mora')) AS portfolio,
         (SELECT COALESCE(SUM(overdue_amount),0) FROM loans WHERE status='En mora') AS overdue,
         (SELECT COALESCE(SUM(amount),0) FROM payments WHERE payment_date=CURRENT_DATE) AS collected_today,
         (SELECT COUNT(*) FROM installments WHERE due_date=CURRENT_DATE AND paid_amount<amount) AS due_today,
-        (SELECT COUNT(*) FROM installments WHERE status='Vencida') AS overdue_installments
+        (SELECT COUNT(*) FROM installments WHERE status='Vencida') AS overdue_installments,
+        (SELECT COALESCE(SUM(disbursed_amount),0) FROM loans) AS total_disbursed,
+        (SELECT COALESCE(SUM(amount),0) FROM payments WHERE date_trunc('month',payment_date)=date_trunc('month',CURRENT_DATE)) AS payments_this_month,
+        (SELECT COUNT(*) FROM loans WHERE status='Cancelado') AS cancelled_loans
     `);
     const byRoute = await this.dataSource.query(`
       SELECT r.code, r.name, r.collector, COALESCE(SUM(l.outstanding_principal),0) AS portfolio,

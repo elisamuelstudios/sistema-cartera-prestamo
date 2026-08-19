@@ -7,13 +7,16 @@ import { ToastService } from '../../core/services/toast.service';
   selector:'app-dashboard',standalone:true,imports:[CurrencyPipe,DecimalPipe,DatePipe],
   template:`
     <div class="page-heading"><div><h1>Resumen ejecutivo</h1><p>Una vista clara del estado actual de la operación.</p></div><button class="btn btn-ghost" (click)="load()">↻ Actualizar</button></div>
-    @if(loading()){<div class="kpis">@for(i of [1,2,3,4];track i){<div class="panel kpi"><div class="skeleton"></div><div class="skeleton large"></div></div>}</div>}
+    @if(loading()){<div class="kpis">@for(i of [1,2,3,4,5,6,7];track i){<div class="panel kpi"><div class="skeleton"></div><div class="skeleton large"></div></div>}</div>}
     @else if(data();as report){
       <div class="kpis">
         <article class="panel kpi"><span>Clientes registrados</span><strong>{{report.kpis.clients|number}}</strong><small>Base total de clientes</small></article>
         <article class="panel kpi accent"><span>Cartera colocada</span><strong>{{report.kpis.portfolio|currency:'COP':'symbol-narrow':'1.0-0'}}</strong><small>{{report.kpis.active_loans}} préstamos vigentes</small></article>
         <article class="panel kpi warning"><span>Saldo en mora</span><strong>{{report.kpis.overdue|currency:'COP':'symbol-narrow':'1.0-0'}}</strong><small>{{report.kpis.overdue_installments}} cuotas vencidas</small></article>
         <article class="panel kpi success"><span>Recaudado hoy</span><strong>{{report.kpis.collected_today|currency:'COP':'symbol-narrow':'1.0-0'}}</strong><small>{{report.kpis.due_today}} cuotas esperan pago</small></article>
+        <article class="panel kpi"><span>Total prestado</span><strong>{{report.kpis.total_disbursed|currency:'COP':'symbol-narrow':'1.0-0'}}</strong><small>Desembolsado histórico</small></article>
+        <article class="panel kpi accent"><span>Pagos del mes</span><strong>{{report.kpis.payments_this_month|currency:'COP':'symbol-narrow':'1.0-0'}}</strong><small>Recaudo del mes en curso</small></article>
+        <article class="panel kpi"><span>Cancelados</span><strong>{{report.kpis.cancelled_loans|number}}</strong><small>Préstamos pagados en su totalidad</small></article>
       </div>
       <div class="dashboard-grid">
         <section class="panel route-card"><header><div><h3>Cartera por ruta</h3><p>Saldo y mora distribuidos por cobrador.</p></div></header><div class="route-list">

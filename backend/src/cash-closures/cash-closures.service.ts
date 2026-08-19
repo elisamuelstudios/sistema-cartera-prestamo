@@ -5,7 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { nextCode, toMoney } from '../common/utils/codes';
 import { CashClose } from '../entities/cash-close.entity';
 import { Route } from '../entities/route.entity';
-import { CreateCashCloseDto } from './dto/cash-close.dto';
+import { CreateCashCloseDto, UpdateCashCloseDto } from './dto/cash-close.dto';
 
 @Injectable()
 export class CashClosuresService {
@@ -114,12 +114,49 @@ export class CashClosuresService {
     };
   }
 
+  async findOne(id: string) {
+    const close = await this.closures.findOne({
+      where: [{ id }, { number: id }],
+      relations: { route: true },
+    });
+    if (!close) throw new NotFoundException('Cierre de caja no encontrado');
+    return close;
+  }
+
   async create(dto: CreateCashCloseDto, username: string) {
     const summary = await this.summary(dto.routeId, dto.date);
     const codes = (await this.closures.find({ select: { number: true } })).map(
       (close) => close.number,
     );
 
+    const values = this.buildValues(dto, summary);
+
+    const close = await this.closures.save(
+      this.closures.create({
+        number: nextCode('CC', codes, 6),
+        date: dto.date,
+        routeId: dto.routeId,
+        collector: summary.collector,
+        ...values,
+        createdBy: username,
+      }),
+    );
+    await this.audit.log(username, 'Cierre de caja', 'Crear', close.number);
+    return this.findOne(close.id);
+  }
+
+  async update(id: string, dto: UpdateCashCloseDto, username: string) {
+    const current = await this.findOne(id);
+    const summary = await this.summary(current.routeId, current.date);
+    const values = this.buildValues(dto, summary);
+
+    Object.assign(current, values);
+    await this.closures.save(current);
+    await this.audit.log(username, 'Cierre de caja', 'Editar', current.number);
+    return this.findOne(current.id);
+  }
+
+  private buildValues(dto: CreateCashCloseDto | UpdateCashCloseDto, summary: Awaited<ReturnType<CashClosuresService['summary']>>) {
     const expenseParts = [
       dto.lunchExpense,
       dto.snackExpense,
@@ -231,40 +268,28 @@ export class CashClosuresService {
       },
     };
 
-    const close = await this.closures.save(
-      this.closures.create({
-        number: nextCode('CC', codes, 6),
-        date: dto.date,
-        routeId: dto.routeId,
-        collector: summary.collector,
-        expectedAmount: summary.expectedAmount,
-        receivedAmount: received,
-        totalExpenses: expenses,
-        initialCash: initial,
-        cashBroughtByCollector,
-        collectorCarryCash: toMoney(dto.collectorCarryCash),
-        totalSales: sales,
-        mochi,
-        internalDebtCharge,
-        cashAbono,
-        finalCash,
-        cashCount,
-        difference: toMoney(cashCount - finalCash),
-        effectiveness: summary.effectiveness,
-        invoicesIn: summary.invoicesIn,
-        invoicesOut: summary.invoicesOut,
-        paidInvoices: summary.paidInvoices,
-        waitingInvoices: summary.waitingInvoices,
-        refinancedLoans: summary.refinancedLoans,
-        details,
-        notes: dto.notes?.trim() || null,
-        createdBy: username,
-      }),
-    );
-    await this.audit.log(username, 'Cierre de caja', 'Crear', close.number);
-    return this.closures.findOne({
-      where: { id: close.id },
-      relations: { route: true },
-    });
+    return {
+      expectedAmount: summary.expectedAmount,
+      receivedAmount: received,
+      totalExpenses: expenses,
+      initialCash: initial,
+      cashBroughtByCollector,
+      collectorCarryCash: toMoney(dto.collectorCarryCash),
+      totalSales: sales,
+      mochi,
+      internalDebtCharge,
+      cashAbono,
+      finalCash,
+      cashCount,
+      difference: toMoney(cashCount - finalCash),
+      effectiveness: summary.effectiveness,
+      invoicesIn: summary.invoicesIn,
+      invoicesOut: summary.invoicesOut,
+      paidInvoices: summary.paidInvoices,
+      waitingInvoices: summary.waitingInvoices,
+      refinancedLoans: summary.refinancedLoans,
+      details,
+      notes: dto.notes?.trim() || null,
+    };
   }
 }

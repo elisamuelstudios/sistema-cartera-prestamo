@@ -22,14 +22,14 @@ interface CloseSummary {
   selector: 'app-cash-closures', standalone: true,
   imports: [ReactiveFormsModule, CurrencyPipe, DatePipe, DateTimePipe, PercentPipe, ModalComponent, MoneyInputDirective],
   template: `
-    <div class="page-heading"><div><h1>Cierre de caja</h1><p>Captura el movimiento completo y precarga el informe desde pagos, cuotas y refinanciaciones.</p></div><button class="btn btn-primary" (click)="openNew()">＋ Nuevo cierre</button></div>
+    <div class="page-heading"><div><h1>Cierre de caja</h1><p>Captura el movimiento completo y precarga el informe desde pagos, cuotas y refinanciaciones.</p></div><div class="actions"><button class="btn btn-secondary" [disabled]="!selected()" (click)="openEdit()">Ver / Editar</button><button class="btn btn-primary" (click)="openNew()">＋ Nuevo cierre</button></div></div>
     <section class="panel"><div class="toolbar"><select (change)="filterRoute($event)"><option value="">Todas las rutas</option>@for (route of routes(); track route.id) {<option [value]="route.id">{{route.code}} · {{route.name}}</option>}</select></div><div class="table-wrap"><table><thead><tr><th>Cierre</th><th>Fecha</th><th>Registrado</th><th>Ruta</th><th>Cobrador</th><th>Esperado</th><th>Recibido</th><th>Abono efectivo</th><th>Carga deuda interna</th><th>Efectividad</th><th>Caja final</th><th>Diferencia</th></tr></thead><tbody>
-      @for (item of closures(); track item.id) {<tr><td><strong>{{item.number}}</strong></td><td>{{item.date|date:'dd/MM/yyyy'}}</td><td>{{item.createdAt|appDateTime}}</td><td>{{item.route?.code}}</td><td>{{item.collector||'—'}}</td><td class="money">{{item.expectedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money">{{item.receivedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money">{{item.cashAbono|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money">{{item.internalDebtCharge|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td>{{item.effectiveness|percent:'1.0-1'}}</td><td class="money">{{item.finalCash|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money" [class.text-red]="item.difference!==0">{{item.difference|currency:'COP':'symbol-narrow':'1.0-0'}}</td></tr>}
+      @for (item of closures(); track item.id) {<tr [class.selected]="selected()?.id===item.id" (click)="selected.set(item)" (dblclick)="openEdit()"><td><strong>{{item.number}}</strong></td><td>{{item.date|date:'dd/MM/yyyy'}}</td><td>{{item.createdAt|appDateTime}}</td><td>{{item.route?.code}}</td><td>{{item.collector||'—'}}</td><td class="money">{{item.expectedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money">{{item.receivedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money">{{item.cashAbono|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money">{{item.internalDebtCharge|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td>{{item.effectiveness|percent:'1.0-1'}}</td><td class="money">{{item.finalCash|currency:'COP':'symbol-narrow':'1.0-0'}}</td><td class="money" [class.text-red]="item.difference!==0">{{item.difference|currency:'COP':'symbol-narrow':'1.0-0'}}</td></tr>}
     </tbody></table>@if (!closures().length) {<div class="empty">No hay cierres registrados.</div>}</div></section>
 
-    <app-modal [open]="modal()" [wide]="true" title="Nuevo cierre de caja" (closed)="modal.set(false)">
+    <app-modal [open]="modal()" [wide]="true" [title]="editing()?'Ver / editar cierre '+selected()?.number:'Nuevo cierre de caja'" (closed)="modal.set(false)">
       <form [formGroup]="form" class="close-form">
-        <section class="block"><h3>Datos del cierre</h3><div class="form-grid three"><div class="field"><label class="required">Ruta</label><select formControlName="routeId" (change)="loadSummary()"><option value="">Selecciona</option>@for (route of routes(); track route.id) {<option [value]="route.id">{{route.code}} · {{route.name}}</option>}</select></div><div class="field"><label class="required">Fecha</label><input type="date" formControlName="date" (change)="loadSummary()"></div><div class="field"><label>Cobrador</label><input [value]="summary()?.collector||'Selecciona una ruta'" readonly></div></div></section>
+        <section class="block"><h3>Datos del cierre</h3><div class="form-grid three"><div class="field"><label class="required">Ruta</label><select formControlName="routeId" (change)="loadSummary()">@if(editing()){<option [value]="form.value.routeId">{{summary()?.routeCode}} · {{summary()?.routeName}}</option>}@else{<option value="">Selecciona</option>@for (route of routes(); track route.id) {<option [value]="route.id">{{route.code}} · {{route.name}}</option>}}</select>@if(editing()){<span class="hint">La ruta no se puede cambiar al editar.</span>}</div><div class="field"><label class="required">Fecha</label><input type="date" formControlName="date" (change)="loadSummary()" [readonly]="editing()">@if(editing()){<span class="hint">La fecha no se puede cambiar al editar.</span>}</div><div class="field"><label>Cobrador</label><input [value]="summary()?.collector||'Selecciona una ruta'" readonly></div></div></section>
 
         <section class="block"><h3>Movimiento de efectivo</h3><div class="form-grid three">
           <div class="field"><label>Efectivo que trae el cobrador</label><input appMoneyInput type="text" inputmode="numeric" formControlName="cashBroughtByCollector" readonly><span class="hint">Saldo que llevaba el cobrador en el cierre anterior.</span></div>
@@ -88,7 +88,7 @@ export class CashClosuresComponent implements OnInit {
   private readonly service = inject(OperationsService); private readonly catalog = inject(CatalogService);
   private readonly toast = inject(ToastService); private readonly fb = inject(FormBuilder);
   readonly routes = signal<Route[]>([]); readonly closures = signal<any[]>([]); readonly summary = signal<CloseSummary | null>(null);
-  readonly modal = signal(false); readonly saving = signal(false);
+  readonly modal = signal(false); readonly saving = signal(false); readonly selected = signal<any>(null); readonly editing = signal(false);
   readonly form = this.fb.group({
     routeId: ['', Validators.required], date: [new Date().toISOString().slice(0, 10), Validators.required],
     cashBroughtByCollector: [0], baseOne: [0], baseTwo: [0], insuranceIncome: [0], otherIncome: [0], totalSales: [0],
@@ -109,13 +109,42 @@ export class CashClosuresComponent implements OnInit {
   load(routeId = '') { this.service.closures(routeId).subscribe({ next: (result) => this.closures.set(result), error: (error) => this.toast.error(error) }); }
   filterRoute(event: Event) { this.load((event.target as HTMLSelectElement).value); }
   openNew() {
+    this.editing.set(false); this.form.controls.routeId.enable(); this.form.controls.date.enable();
     this.form.reset({ routeId: '', date: new Date().toISOString().slice(0, 10), cashBroughtByCollector: 0, baseOne: 0, baseTwo: 0, insuranceIncome: 0, otherIncome: 0, totalSales: 0, lunchExpense: 0, snackExpense: 0, stationeryExpense: 0, payrollExpense: 0, fuelExpense: 0, repairExpense: 0, extraExpenses: 0, expenseComments: '', capitalWithdrawal: 0, cashToInternal: 0, collectorCarryCash: 0, mochi: 0, cashAbono: 0, internalDebtorName: '', internalDebtCharge: 0, bills100000: 0, bills50000: 0, bills20000: 0, bills10000: 0, bills5000: 0, bills2000: 0, coins1000: 0, coins500: 0, coins200: 0, coins100: 0, coins50: 0, notes: '' });
     this.summary.set(null); this.modal.set(true);
   }
-  loadSummary() { const { routeId, date } = this.form.getRawValue(); if (!routeId || !date) { this.summary.set(null); return; } this.service.closeSummary(routeId, date).subscribe({ next: (result) => { this.summary.set(result); this.form.patchValue({ cashBroughtByCollector: result.cashBroughtByCollector ?? 0, totalSales: result.totalSales ?? 0, mochi: result.mochi ?? 0 }); }, error: (error) => this.toast.error(error) }); }
+  openEdit() {
+    const item = this.selected(); if (!item) return;
+    this.service.getClose(item.id).subscribe({
+      next: (full) => {
+        this.editing.set(true);
+        const d = full.details ?? {}; const denom = d.denominations ?? {};
+        this.form.reset({
+          routeId: full.routeId, date: full.date,
+          cashBroughtByCollector: full.cashBroughtByCollector ?? 0, baseOne: d.baseOne ?? 0, baseTwo: d.baseTwo ?? 0,
+          insuranceIncome: d.insuranceIncome ?? 0, otherIncome: d.otherIncome ?? 0, totalSales: full.totalSales ?? 0,
+          lunchExpense: d.lunchExpense ?? 0, snackExpense: d.snackExpense ?? 0, stationeryExpense: d.stationeryExpense ?? 0,
+          payrollExpense: d.payrollExpense ?? 0, fuelExpense: d.fuelExpense ?? 0, repairExpense: d.repairExpense ?? 0,
+          extraExpenses: d.extraExpenses ?? 0, expenseComments: d.expenseComments ?? '',
+          capitalWithdrawal: d.capitalWithdrawal ?? 0, cashToInternal: d.cashToInternal ?? 0, collectorCarryCash: full.collectorCarryCash ?? 0,
+          mochi: full.mochi ?? 0, cashAbono: full.cashAbono ?? 0, internalDebtorName: d.internalDebtorName ?? '', internalDebtCharge: full.internalDebtCharge ?? 0,
+          bills100000: denom.bills100000 ?? 0, bills50000: denom.bills50000 ?? 0, bills20000: denom.bills20000 ?? 0,
+          bills10000: denom.bills10000 ?? 0, bills5000: denom.bills5000 ?? 0, bills2000: denom.bills2000 ?? 0,
+          coins1000: denom.coins1000 ?? 0, coins500: denom.coins500 ?? 0, coins200: denom.coins200 ?? 0,
+          coins100: denom.coins100 ?? 0, coins50: denom.coins50 ?? 0, notes: full.notes ?? '',
+        });
+        this.form.controls.routeId.disable(); this.form.controls.date.disable();
+        this.loadSummary();
+        this.modal.set(true);
+      },
+      error: (error) => this.toast.error(error),
+    });
+  }
+  loadSummary() { const { routeId, date } = this.form.getRawValue(); if (!routeId || !date) { this.summary.set(null); return; } this.service.closeSummary(routeId, date).subscribe({ next: (result) => { this.summary.set(result); if (!this.editing()) this.form.patchValue({ cashBroughtByCollector: result.cashBroughtByCollector ?? 0, totalSales: result.totalSales ?? 0, mochi: result.mochi ?? 0 }); }, error: (error) => this.toast.error(error) }); }
   save() {
     if (this.form.invalid || !this.summary()) { this.form.markAllAsTouched(); this.toast.show('Selecciona la ruta y completa los campos obligatorios', 'error'); return; }
     this.saving.set(true); const body = { ...this.form.getRawValue(), totalExpenses: this.totalExpenses, initialCash: this.summary()!.initialCash, cashCount: this.cashCount };
-    this.service.createClose(body).subscribe({ next: () => { this.saving.set(false); this.modal.set(false); this.load(); this.toast.show('Cierre de caja guardado'); }, error: (error) => { this.saving.set(false); this.toast.error(error); } });
+    const request = this.editing() ? this.service.updateClose(this.selected().id, body) : this.service.createClose(body);
+    request.subscribe({ next: () => { this.saving.set(false); this.modal.set(false); this.load(); this.toast.show(this.editing() ? 'Cierre de caja actualizado' : 'Cierre de caja guardado'); }, error: (error) => { this.saving.set(false); this.toast.error(error); } });
   }
 }

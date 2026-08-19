@@ -1,3 +1,4 @@
+import { PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsNumber, IsObject, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
@@ -47,5 +48,11 @@ export class CreateCashCloseDto {
   @IsOptional() @Type(() => Number) @IsNumber() cashCount?: number;
   @IsOptional() @IsObject() details?: Record<string, unknown>;
   @IsOptional() @IsString() notes?: string;
+}
+
+/** La ruta y la fecha identifican el cierre; no se editan una vez creado. */
+export class UpdateCashCloseDto extends PartialType(CreateCashCloseDto) {
+  routeId?: never;
+  date?: never;
 }
 

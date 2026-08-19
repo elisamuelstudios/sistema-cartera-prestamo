@@ -84,6 +84,21 @@ export class ClientsService {
     };
   }
 
+  async codes() {
+    const rows = await this.repository
+      .createQueryBuilder('client')
+      .select('client.code', 'code')
+      .addSelect('client.firstNames', 'firstNames')
+      .addSelect('client.lastNames', 'lastNames')
+      .orderBy('client.code', 'DESC')
+      .limit(1000)
+      .getRawMany<{ code: string; firstNames: string; lastNames: string }>();
+    return rows.map((row) => ({
+      value: row.code,
+      label: `${row.code} · ${row.firstNames} ${row.lastNames}`,
+    }));
+  }
+
   async findOne(id: string) {
     const client = await this.repository.findOne({
       where: [{ id }, { code: id }],

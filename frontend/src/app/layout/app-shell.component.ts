@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, ElementRef, HostListener, inject, signal, ViewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { finalize } from 'rxjs';
@@ -6,15 +6,12 @@ import { AuthService } from '../core/services/auth.service';
 import { ToastService } from '../core/services/toast.service';
 import { ModalComponent } from '../shared/modal/modal.component';
 
-const SIDEBAR_COLLAPSED_KEY = 'cartera_sidebar_collapsed';
-
 @Component({
   selector: 'app-shell', standalone: true, imports: [RouterOutlet, RouterLink, RouterLinkActive, ReactiveFormsModule, ModalComponent],
   template: `
-    <div class="shell" [class.menu-open]="menuOpen()" [class.collapsed]="collapsed()">
-      <aside>
+    <div class="shell" [class.menu-open]="menuOpen()" [class.expanded]="expanded()">
+      <aside #sidebar (mouseenter)="expand()" (click)="expand()">
         <div class="brand"><div class="brand-mark">IR</div><div class="brand-text"><strong>Inversiones<br>La Roca</strong><span>Cartera inteligente</span></div></div>
-        <button class="collapse-toggle" type="button" [attr.aria-label]="collapsed()?'Expandir menú':'Colapsar menú'" [title]="collapsed()?'Expandir menú':'Colapsar menú'" (click)="toggleCollapsed()"><span>{{ collapsed() ? '»' : '«' }}</span></button>
         <nav>
           @for (item of navigation; track item.path) {
             @if (!item.admin || auth.isAdmin()) { <a [routerLink]="item.path" routerLinkActive="active" [title]="item.label" (click)="menuOpen.set(false)"><span class="nav-icon">{{ item.icon }}</span><span class="nav-label">{{ item.label }}</span></a> }
@@ -45,7 +42,8 @@ const SIDEBAR_COLLAPSED_KEY = 'cartera_sidebar_collapsed';
 })
 export class AppShellComponent {
   readonly auth = inject(AuthService); readonly toastService = inject(ToastService); readonly menuOpen = signal(false);
-  readonly collapsed = signal(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
+  readonly expanded = signal(false);
+  @ViewChild('sidebar') private readonly sidebarRef?: ElementRef<HTMLElement>;
   private readonly fb = inject(FormBuilder);
   readonly passwordModal = signal(Boolean(this.auth.user()?.mustChangePassword));
   readonly passwordLoading = signal(false);
@@ -64,7 +62,13 @@ export class AppShellComponent {
   ];
   readonly today = new Intl.DateTimeFormat('es-CO', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
   get initials() { return (this.auth.user()?.fullName ?? 'US').split(' ').slice(0, 2).map((part) => part[0]).join('').toUpperCase(); }
-  toggleCollapsed() { const next = !this.collapsed(); this.collapsed.set(next); localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0'); }
+  expand() { this.expanded.set(true); }
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent) {
+    if (!this.expanded()) return;
+    const aside = this.sidebarRef?.nativeElement;
+    if (aside && !aside.contains(event.target as Node)) this.expanded.set(false);
+  }
   changePassword() {
     if (this.passwordForm.invalid) {
       this.passwordForm.markAllAsTouched();

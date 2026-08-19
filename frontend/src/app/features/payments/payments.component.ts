@@ -51,16 +51,17 @@ export class PaymentsComponent implements OnInit{
  readonly clientSearch=signal('');readonly clientPage=signal(1);readonly clientTotal=signal(0);readonly clientLoading=signal(false);readonly loanLoading=signal(false);
  private clientTimer?:number;
 
+ readonly codeOptions=signal<{value:string;label:string}[]>([]);
  readonly filters=signal<Record<string,string>>({receipt:'',clientName:'',identification:'',method:'',routeId:''});
  readonly filterFields=computed<FilterField[]>(()=>[
-   {key:'receipt',label:'Recibo',type:'text',placeholder:'RC-000001'},
+   {key:'receipt',label:'Recibo',type:'select',placeholder:'Todos los recibos',options:this.codeOptions().map(o=>({value:o.value,label:o.label}))},
    {key:'clientName',label:'Cliente',type:'text',placeholder:'Nombre del cliente'},
    {key:'identification',label:'Documento',type:'text',placeholder:'Número de documento'},
    {key:'method',label:'Método',type:'select',placeholder:'Todos los métodos',options:[{value:'Efectivo',label:'Efectivo'},{value:'Transferencia',label:'Transferencia'},{value:'Otro',label:'Otro'}]},
    {key:'routeId',label:'Ruta',type:'select',placeholder:'Todas las rutas',options:this.routes().map(r=>({value:r.id,label:`${r.code} · ${r.name}`}))},
  ]);
 
- ngOnInit(){this.load();this.catalog.routes(true).subscribe(r=>this.routes.set(r))}
+ ngOnInit(){this.load();this.catalog.routes(true).subscribe(r=>this.routes.set(r));this.service.codes().subscribe(c=>this.codeOptions.set(c))}
  load(){const f=this.filters();this.service.list(this.page(),25,{receipt:f['receipt'],clientName:f['clientName'],identification:f['identification'],method:f['method'],routeId:f['routeId']}).subscribe({next:r=>{this.payments.set(r.items);this.total.set(r.total)},error:e=>this.toast.error(e)})}
  go(p:number){this.page.set(p);this.load()}
  onFilterChange(event:{key:string;value:string}){this.filters.update(f=>({...f,[event.key]:event.value}));this.page.set(1);this.load()}

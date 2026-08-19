@@ -57,16 +57,17 @@ import { StatusBadgeComponent } from '../../shared/status-badge/status-badge.com
 export class ClientsComponent implements OnInit{
   private service=inject(ClientsService);private catalog=inject(CatalogService);private toast=inject(ToastService);private fb=inject(FormBuilder);
   readonly clients=signal<Client[]>([]);readonly routes=signal<Route[]>([]);readonly total=signal(0);readonly page=signal(1);readonly loading=signal(false);readonly selected=signal<Client|null>(null);readonly modal=signal(false);readonly editing=signal(false);readonly step=signal(1);readonly saving=signal(false);
+  readonly codeOptions=signal<{value:string;label:string}[]>([]);
   readonly filters=signal<Record<string,string>>({code:'',name:'',identification:'',status:'',routeId:''});
   readonly filterFields=computed<FilterField[]>(()=>[
-    {key:'code',label:'Código',type:'text',placeholder:'CL-00001'},
+    {key:'code',label:'Código',type:'select',placeholder:'Todos los códigos',options:this.codeOptions().map(o=>({value:o.value,label:o.label}))},
     {key:'name',label:'Nombre',type:'text',placeholder:'Nombre o apellido'},
     {key:'identification',label:'Documento',type:'text',placeholder:'Número de documento'},
     {key:'status',label:'Estado',type:'select',placeholder:'Todos los estados',options:[{value:'Activo',label:'Activo'},{value:'Lista Negra',label:'Lista Negra'},{value:'Inactivo',label:'Inactivo'}]},
     {key:'routeId',label:'Ruta',type:'select',placeholder:'Todas las rutas',options:this.routes().map(r=>({value:r.id,label:`${r.code} · ${r.name}`}))},
   ]);
   readonly form=this.fb.group({firstNames:['',[Validators.required,Validators.minLength(2)]],lastNames:['',[Validators.required,Validators.minLength(2)]],identification:['',[Validators.required,Validators.minLength(3)]],birthDate:[''],primaryPhone:['',[Validators.required,Validators.minLength(7)]],alternatePhone:[''],address:[''],neighborhood:[''],city:[''],email:['',Validators.email],occupation:[''],workplace:[''],monthlyIncome:[0,[Validators.min(0)]],status:['Activo',Validators.required],routeId:['',Validators.required],personalReferences:[''],familyReferences:[''],observations:['']});
-  ngOnInit(){this.load();this.catalog.routes(true).subscribe(r=>this.routes.set(r));}
+  ngOnInit(){this.load();this.catalog.routes(true).subscribe(r=>this.routes.set(r));this.service.codes().subscribe(c=>this.codeOptions.set(c));}
   load(selectId?:string){this.loading.set(true);const f=this.filters();this.service.list(this.page(),25,{code:f['code'],name:f['name'],identification:f['identification'],status:f['status'],routeId:f['routeId']}).subscribe({next:r=>{this.clients.set(r.items);this.total.set(r.total);this.loading.set(false);if(selectId)this.selected.set(r.items.find(c=>c.id===selectId)??null)},error:e=>{this.loading.set(false);this.toast.error(e)}})}
   onFilterChange(event:{key:string;value:string}){this.filters.update(f=>({...f,[event.key]:event.value}));this.page.set(1);this.load()}
   go(page:number){this.page.set(page);this.load()}

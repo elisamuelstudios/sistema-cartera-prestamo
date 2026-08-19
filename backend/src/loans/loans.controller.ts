@@ -15,6 +15,7 @@ export class LoansController {
   ) {
     return this.service.findAll(code, clientName, identification, status, Math.max(1, Number(page)), Math.min(100, Math.max(1, Number(pageSize))), clientId, routeId);
   }
+  @Get('codes') codes() { return this.service.codes(); }
   @Get(':id') findOne(@Param('id') id: string) { return this.service.findOne(id); }
   @Post('preview') preview(@Body() dto: LoanPreviewDto) { return this.service.preview(dto); }
   @Post() create(@Body() dto: CreateLoanDto, @CurrentUser() user: AuthenticatedUser) { return this.service.create(dto, user.username); }

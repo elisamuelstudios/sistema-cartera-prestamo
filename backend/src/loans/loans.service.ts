@@ -110,6 +110,22 @@ export class LoansService {
     };
   }
 
+  async codes() {
+    const rows = await this.loans
+      .createQueryBuilder('loan')
+      .leftJoin('loan.client', 'client')
+      .select('loan.number', 'number')
+      .addSelect('client.firstNames', 'firstNames')
+      .addSelect('client.lastNames', 'lastNames')
+      .orderBy('loan.number', 'DESC')
+      .limit(1000)
+      .getRawMany<{ number: string; firstNames: string; lastNames: string }>();
+    return rows.map((row) => ({
+      value: row.number,
+      label: `${row.number} · ${row.firstNames ?? ''} ${row.lastNames ?? ''}`.trim(),
+    }));
+  }
+
   async findOne(id: string) {
     const loan = await this.loans.findOne({
       where: [{ id }, { number: id }],

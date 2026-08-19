@@ -48,14 +48,14 @@ type LoanPreview = LoanPreviewResult;
           <div class="field"><label>Ruta de cobro</label><select formControlName="routeId"><option value="">Sin asignar</option>@for (route of routes(); track route.id) {<option [value]="route.id">{{route.code}} · {{route.name}}</option>}</select></div>
           <div class="field"><label>Asesor</label><input [value]="advisorUsername" readonly><span class="hint">Usuario que registra o edita la operación.</span></div>
         </div>
-        @if (preview(); as p) {<div class="loan-preview"><div><span>Capital</span><strong>{{form.value.disbursedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div><div><span>Interés</span><strong>{{p.generatedInterest|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div><div><span>Total a cobrar</span><strong>{{p.total|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div><div><span>Cuota pactada</span><strong>{{p.dailyInstallment|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div><div><span>Cantidad de pagos</span><strong>{{p.installmentCount}}</strong></div><div><span>Última cuota</span><strong>{{p.lastInstallment|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div></div>}
+        @if (preview(); as p) {<div class="loan-preview"><div><span>Capital</span><strong>{{form.value.disbursedAmount|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div><div><span>Interés</span><strong>{{p.generatedInterest|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div><div><span>Total a cobrar</span><strong>{{p.total|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div><div><span>Cuota pactada</span><strong>{{p.dailyInstallment|currency:'COP':'symbol-narrow':'1.0-0'}}</strong></div><div><span>Cantidad de pagos</span><strong>{{p.installmentCount}}</strong></div></div>}
         @if (effectiveInterestPercent < 10) {<div class="interest-warning"><strong>Interés inferior al 10 %</strong><span>El sistema lo permite, pero debes confirmar que corresponde al acuerdo realizado con el cliente.</span></div>}
         <div class="form-grid"><div class="field span-2"><label>Observaciones</label><textarea rows="2" formControlName="observations"></textarea></div></div>
       </form>
       <div modal-actions><button class="btn btn-secondary" (click)="modal.set(false)">Cancelar</button><button class="btn btn-success" [disabled]="saving()" (click)="save()">{{saving()?'Guardando…':mode()==='refinance'?'Crear refinanciación':'Guardar préstamo'}}</button></div>
     </app-modal>`,
   styles: [`
-    .toolbar select{width:180px}.locked-client{display:grid;gap:4px;padding:14px 16px;border-radius:12px;background:#eef3f6;margin-bottom:20px}.locked-client span,.locked-client small{font-size:9px;color:#718697}.locked-client strong{font-size:14px;color:#183a52}.loan-preview{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:#dce7ed;border:1px solid #dce7ed;border-radius:12px;overflow:hidden;margin:19px 0 10px}.loan-preview div{background:#f7fafb;padding:12px}.loan-preview span{display:block;font-size:9px;color:#718697;text-transform:uppercase;font-weight:800}.loan-preview strong{font-size:14px;color:#176b87;margin-top:4px;display:block}.interest-warning{display:grid;gap:3px;margin:0 0 18px;padding:11px 13px;border:1px solid #f2c66d;border-radius:10px;background:#fff8e6;color:#805716}.interest-warning strong{font-size:11px}.interest-warning span{font-size:9px}.loan-form>.section-title{margin-top:0}
+    .toolbar select{width:180px}.locked-client{display:grid;gap:4px;padding:14px 16px;border-radius:12px;background:#eef3f6;margin-bottom:20px}.locked-client span,.locked-client small{font-size:9px;color:#718697}.locked-client strong{font-size:14px;color:#183a52}.loan-preview{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:#dce7ed;border:1px solid #dce7ed;border-radius:12px;overflow:hidden;margin:19px 0 10px}.loan-preview div{background:#f7fafb;padding:12px}.loan-preview span{display:block;font-size:9px;color:#718697;text-transform:uppercase;font-weight:800}.loan-preview strong{font-size:14px;color:#176b87;margin-top:4px;display:block}.interest-warning{display:grid;gap:3px;margin:0 0 18px;padding:11px 13px;border:1px solid #f2c66d;border-radius:10px;background:#fff8e6;color:#805716}.interest-warning strong{font-size:11px}.interest-warning span{font-size:9px}.loan-form>.section-title{margin-top:0}
     .loan-form .form-grid{align-items:start;row-gap:30px}.loan-form .field{position:relative}.loan-form .field .hint{position:absolute;top:100%;left:0;right:0;margin-top:4px}
     @media(max-width:1000px){.loan-preview{grid-template-columns:repeat(3,1fr)}}@media(max-width:750px){.loan-preview{grid-template-columns:repeat(2,1fr)}}
   `],
@@ -72,9 +72,10 @@ export class LoansComponent implements OnInit {
   readonly mode = signal<LoanMode>('new'); readonly saving = signal(false); readonly preview = signal<LoanPreview | null>(null);
   readonly clientSearch = signal(''); readonly clientPage = signal(1); readonly clientTotal = signal(0); readonly clientLoading = signal(false);
 
+  readonly codeOptions = signal<{ value: string; label: string }[]>([]);
   readonly filters = signal<Record<string, string>>({ code: '', clientName: '', identification: '', status: '', routeId: '' });
   readonly filterFields = computed<FilterField[]>(() => [
-    { key: 'code', label: 'Código', type: 'text', placeholder: 'PR-000001' },
+    { key: 'code', label: 'Código', type: 'select', placeholder: 'Todos los códigos', options: this.codeOptions().map((o) => ({ value: o.value, label: o.label })) },
     { key: 'clientName', label: 'Cliente', type: 'text', placeholder: 'Nombre del cliente' },
     { key: 'identification', label: 'Documento', type: 'text', placeholder: 'Número de documento' },
     { key: 'status', label: 'Estado', type: 'select', placeholder: 'Todos los estados', options: [{ value: 'Activo', label: 'Activo' }, { value: 'En mora', label: 'En mora' }, { value: 'Refinanciado', label: 'Refinanciado' }, { value: 'Cancelado', label: 'Cancelado' }] },
@@ -90,7 +91,7 @@ export class LoansComponent implements OnInit {
     additionalCosts: [0], chargeMode: ['Financiados'],
   });
 
-  ngOnInit() { this.load(); this.catalog.routes(true).subscribe((routes) => this.routes.set(routes)); }
+  ngOnInit() { this.load(); this.catalog.routes(true).subscribe((routes) => this.routes.set(routes)); this.service.codes().subscribe((c) => this.codeOptions.set(c)); }
   get modalTitle() { return this.mode() === 'new' ? 'Crear préstamo' : this.mode() === 'edit' ? 'Editar préstamo' : `Refinanciar ${this.selected()?.number ?? ''}`; }
   get advisorUsername() { return this.auth.user()?.username ?? '—'; }
   get effectiveInterestPercent() { return this.round1(Number(this.preview()?.interestRate ?? (Number(this.form.getRawValue().interestPercent) / 100)) * 100); }

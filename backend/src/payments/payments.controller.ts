@@ -15,6 +15,7 @@ export class PaymentsController {
   ) {
     return this.service.findAll(receipt, clientName, identification, Math.max(1, Number(page)), Math.min(100, Math.max(1, Number(pageSize))), method, routeId, loanId);
   }
+  @Get('codes') codes() { return this.service.codes(); }
   @Get(':id') findOne(@Param('id') id: string) { return this.service.findOne(id); }
   @Post() create(@Body() dto: CreatePaymentDto, @CurrentUser() user: AuthenticatedUser) { return this.service.create(dto, user.username); }
   @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdatePaymentDto, @CurrentUser() user: AuthenticatedUser) {

@@ -76,6 +76,22 @@ export class PaymentsService {
     };
   }
 
+  async codes() {
+    const rows = await this.payments
+      .createQueryBuilder('payment')
+      .leftJoin('payment.client', 'client')
+      .select('payment.receipt', 'receipt')
+      .addSelect('client.firstNames', 'firstNames')
+      .addSelect('client.lastNames', 'lastNames')
+      .orderBy('payment.receipt', 'DESC')
+      .limit(1000)
+      .getRawMany<{ receipt: string; firstNames: string; lastNames: string }>();
+    return rows.map((row) => ({
+      value: row.receipt,
+      label: `${row.receipt} · ${row.firstNames ?? ''} ${row.lastNames ?? ''}`.trim(),
+    }));
+  }
+
   async findOne(id: string) {
     const payment = await this.payments.findOne({
       where: [{ id }, { receipt: id }],

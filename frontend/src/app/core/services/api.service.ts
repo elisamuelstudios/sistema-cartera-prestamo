@@ -12,6 +12,7 @@ export class ApiService {
   }
   post<T>(path: string, body: unknown): Observable<T> { return this.http.post<T>(`/api/${path}`, body); }
   patch<T>(path: string, body: unknown): Observable<T> { return this.http.patch<T>(`/api/${path}`, body); }
+  delete<T>(path: string): Observable<T> { return this.http.delete<T>(`/api/${path}`); }
   download(path: string): Observable<Blob> { return this.http.get(`/api/${path}`, { responseType: 'blob' }); }
 }
 

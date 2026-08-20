@@ -16,7 +16,7 @@ import { StatusBadgeComponent } from '../../shared/status-badge/status-badge.com
 @Component({
  selector:'app-payments',standalone:true,imports:[CurrencyPipe,DatePipe,DateTimePipe,ClientPickerComponent,FilterBarComponent,ModalComponent,PaymentFormComponent,StatusBadgeComponent],
  template:`
-  <div class="page-heading"><div><h1>Pagos</h1><p>Registra cobros y corrige pagos digitados por error.</p></div><div class="actions"><button class="btn btn-secondary" [disabled]="!selected()" (click)="openEdit()">Editar pago</button><button class="btn btn-primary" (click)="openNew()">＋ Registrar pago</button></div></div>
+  <div class="page-heading"><div><h1>Pagos</h1><p>Registra cobros y corrige pagos digitados por error.</p></div><div class="actions"><button class="btn btn-secondary" [disabled]="!selected()" (click)="openEdit()">Editar pago</button><button class="btn btn-danger" [disabled]="!selected()||deleting()" (click)="remove()">Eliminar</button><button class="btn btn-primary" (click)="openNew()">＋ Registrar pago</button></div></div>
   <section class="panel">
    <app-filter-bar [fields]="filterFields()" [values]="filters()" (changed)="onFilterChange($event)"/>
    <div class="table-wrap"><table><thead><tr><th>Recibo</th><th>Fecha del pago</th><th>Registrado</th><th>Préstamo</th><th>Cliente</th><th>Total deuda</th><th>Valor pagado</th><th>Saldo pendiente</th><th>Método</th><th>Responsable</th></tr></thead><tbody>
@@ -48,7 +48,7 @@ import { StatusBadgeComponent } from '../../shared/status-badge/status-badge.com
 export class PaymentsComponent implements OnInit{
  private service=inject(PaymentsService);private loanService=inject(LoansService);private clientService=inject(ClientsService);private catalog=inject(CatalogService);private toast=inject(ToastService);
  readonly payments=signal<Payment[]>([]);readonly loans=signal<Loan[]>([]);readonly clients=signal<Client[]>([]);readonly routes=signal<Route[]>([]);readonly selected=signal<Payment|null>(null);readonly selectedClient=signal<Client|null>(null);readonly selectedLoan=signal<Loan|null>(null);readonly page=signal(1);readonly total=signal(0);readonly modal=signal(false);readonly editing=signal(false);
- readonly clientSearch=signal('');readonly clientPage=signal(1);readonly clientTotal=signal(0);readonly clientLoading=signal(false);readonly loanLoading=signal(false);
+ readonly clientSearch=signal('');readonly clientPage=signal(1);readonly clientTotal=signal(0);readonly clientLoading=signal(false);readonly loanLoading=signal(false);readonly deleting=signal(false);
  private clientTimer?:number;
 
  readonly codeOptions=signal<{value:string;label:string}[]>([]);
@@ -74,4 +74,5 @@ export class PaymentsComponent implements OnInit{
  chooseClient(client:Client){this.selectedClient.set(client);this.selectedLoan.set(null);this.loans.set([]);this.loanLoading.set(true);this.loanService.listForClient(client.id).subscribe({next:r=>{const available=r.items.filter(loan=>['Activo','En mora'].includes(loan.status));this.loans.set(available);this.loanLoading.set(false);if(available.length===1)this.chooseLoan(available[0])},error:e=>{this.loanLoading.set(false);this.toast.error(e)}})}
  chooseLoan(loan:Loan){this.selectedLoan.set(loan)}
  onSaved(payment:Payment){this.modal.set(false);this.selected.set(payment);this.page.set(1);this.load()}
+ remove(){const payment=this.selected();if(!payment)return;if(!window.confirm(`¿Eliminar el pago ${payment.receipt}? Se recalculará el plan de pagos del préstamo. Esta acción no se puede deshacer.`))return;this.deleting.set(true);this.service.remove(payment.id).subscribe({next:()=>{this.deleting.set(false);this.selected.set(null);this.toast.show('Pago eliminado');this.load()},error:e=>{this.deleting.set(false);this.toast.error(e)}})}
 }

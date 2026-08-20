@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -24,5 +24,8 @@ export class LoansController {
   }
   @Post(':id/refinance') refinance(@Param('id') id: string, @Body() dto: RefinanceLoanDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.refinance(id, dto, user.username);
+  }
+  @Delete(':id') remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.remove(id, user.username);
   }
 }

@@ -13,7 +13,7 @@ import { StatusBadgeComponent } from '../../shared/status-badge/status-badge.com
 @Component({
   selector:'app-clients',standalone:true,imports:[ReactiveFormsModule,DateTimePipe,FilterBarComponent,ModalComponent,MoneyInputDirective,StatusBadgeComponent],
   template:`
-    <div class="page-heading"><div><h1>Clientes</h1><p>Consulta, registra y actualiza la información de tus clientes.</p></div><div class="actions"><button class="btn btn-secondary" [disabled]="!selected()" (click)="edit()">Editar seleccionado</button><button class="btn btn-primary" (click)="openNew()">＋ Nuevo cliente</button></div></div>
+    <div class="page-heading"><div><h1>Clientes</h1><p>Consulta, registra y actualiza la información de tus clientes.</p></div><div class="actions"><button class="btn btn-secondary" [disabled]="!selected()" (click)="edit()">Editar seleccionado</button><button class="btn btn-danger" [disabled]="!selected()||deleting()" (click)="remove()">Eliminar</button><button class="btn btn-primary" (click)="openNew()">＋ Nuevo cliente</button></div></div>
     <section class="panel">
       <app-filter-bar [fields]="filterFields()" [values]="filters()" (changed)="onFilterChange($event)"/>
       <div class="table-wrap"><table><thead><tr><th>Código</th><th>Registrado</th><th>Cliente</th><th>Documento</th><th>Teléfono</th><th>Ruta</th><th>Préstamo actual</th><th>Estado</th></tr></thead><tbody>
@@ -56,7 +56,7 @@ import { StatusBadgeComponent } from '../../shared/status-badge/status-badge.com
 })
 export class ClientsComponent implements OnInit{
   private service=inject(ClientsService);private catalog=inject(CatalogService);private toast=inject(ToastService);private fb=inject(FormBuilder);
-  readonly clients=signal<Client[]>([]);readonly routes=signal<Route[]>([]);readonly total=signal(0);readonly page=signal(1);readonly loading=signal(false);readonly selected=signal<Client|null>(null);readonly modal=signal(false);readonly editing=signal(false);readonly step=signal(1);readonly saving=signal(false);
+  readonly clients=signal<Client[]>([]);readonly routes=signal<Route[]>([]);readonly total=signal(0);readonly page=signal(1);readonly loading=signal(false);readonly selected=signal<Client|null>(null);readonly modal=signal(false);readonly editing=signal(false);readonly step=signal(1);readonly saving=signal(false);readonly deleting=signal(false);
   readonly codeOptions=signal<{value:string;label:string}[]>([]);
   readonly filters=signal<Record<string,string>>({code:'',name:'',identification:'',status:'',routeId:''});
   readonly filterFields=computed<FilterField[]>(()=>[
@@ -76,4 +76,5 @@ export class ClientsComponent implements OnInit{
   next(){const names=this.step()===1?['firstNames','lastNames','identification']:['primaryPhone','email'];let valid=true;for(const name of names){const control=this.form.get(name);control?.markAsTouched();if(control?.invalid)valid=false}if(valid)this.step.set(this.step()+1);else this.toast.show('Completa los campos obligatorios antes de continuar','error')}
   invalid(name:string){const control=this.form.get(name);return !!control&&control.invalid&&(control.touched||control.dirty)}closeModal(){this.modal.set(false)}
   save(){if(this.form.invalid){this.form.markAllAsTouched();this.toast.show('Revisa los campos obligatorios','error');return}this.saving.set(true);const request=this.editing()&&this.selected()?this.service.update(this.selected()!.id,this.form.getRawValue()):this.service.create(this.form.getRawValue());request.subscribe({next:client=>{this.saving.set(false);this.modal.set(false);this.page.set(1);this.load(client.id);this.toast.show(this.editing()?'Cliente actualizado':'Cliente registrado')},error:e=>{this.saving.set(false);this.toast.error(e)}})}
+  remove(){const client=this.selected();if(!client)return;if(!window.confirm(`¿Eliminar el cliente ${client.code} (${client.fullName})? Esta acción no se puede deshacer.`))return;this.deleting.set(true);this.service.remove(client.id).subscribe({next:()=>{this.deleting.set(false);this.selected.set(null);this.toast.show('Cliente eliminado');this.load()},error:e=>{this.deleting.set(false);this.toast.error(e)}})}
 }

@@ -8,7 +8,13 @@ import { CreateRouteDto, UpdateRouteDto } from './dto/route.dto';
 @Injectable()
 export class RoutesService {
   constructor(@InjectRepository(Route) private readonly repository: Repository<Route>) {}
-  findAll(active?: boolean) { return this.repository.find({ where: active === undefined ? {} : { active }, order: { code: 'ASC' } }); }
+  findAll(active?: boolean) {
+    const query = this.repository.createQueryBuilder('route')
+      .loadRelationCountAndMap('route.clientCount', 'route.clients')
+      .orderBy('route.code', 'ASC');
+    if (active !== undefined) query.andWhere('route.active = :active', { active });
+    return query.getMany();
+  }
   async findOne(id: string) {
     const route = await this.repository.findOne({ where: [{ id }, { code: id }] });
     if (!route) throw new NotFoundException('Ruta no encontrada');

@@ -18,4 +18,5 @@ export interface LoanFilters { code?: string; clientName?: string; identificatio
   get(id:string){return this.api.get<Loan>(`loans/${id}`);} preview(body:unknown){return this.api.post<LoanPreviewResult>('loans/preview',body);}
   create(body:unknown){return this.api.post<Loan>('loans',body);} update(id:string,body:unknown){return this.api.patch<Loan>(`loans/${id}`,body);} refinance(id:string,body:unknown){return this.api.post<Loan>(`loans/${id}/refinance`,body);}
   codes(){return this.api.get<{value:string;label:string}[]>('loans/codes');}
+  remove(id:string){return this.api.delete<void>(`loans/${id}`);}
 }

@@ -166,6 +166,17 @@ export class PaymentsService {
     return this.findOne(payment.id);
   }
 
+  async remove(id: string, username: string) {
+    const payment = await this.payments.findOne({
+      where: [{ id }, { receipt: id }],
+    });
+    if (!payment) throw new NotFoundException('Pago no encontrado');
+    const { loanId, receipt, amount } = payment;
+    await this.payments.remove(payment);
+    await this.recalculateLoan(loanId);
+    await this.audit.log(username, 'Pagos', 'Eliminar', receipt, { amount });
+  }
+
   async recalculateLoan(loanId: string) {
     await this.dataSource.transaction(async (manager) => {
       const loan = await manager.findOne(Loan, { where: { id: loanId } });

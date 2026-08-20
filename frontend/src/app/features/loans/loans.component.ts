@@ -21,7 +21,7 @@ type LoanPreview = LoanPreviewResult;
   selector: 'app-loans', standalone: true,
   imports: [ReactiveFormsModule, CurrencyPipe, DatePipe, PercentPipe, DateTimePipe, ClientPickerComponent, FilterBarComponent, ModalComponent, MoneyInputDirective, StatusBadgeComponent],
   template: `
-    <div class="page-heading"><div><h1>Préstamos</h1><p>Administra desembolsos, condiciones y refinanciaciones.</p></div><div class="actions"><button class="btn btn-secondary" [disabled]="!selected()" (click)="openEdit()">Editar</button><button class="btn btn-secondary" [disabled]="!canRefinance()" (click)="openRefinance()">Refinanciar</button><button class="btn btn-primary" (click)="openNew()">＋ Nuevo préstamo</button></div></div>
+    <div class="page-heading"><div><h1>Préstamos</h1><p>Administra desembolsos, condiciones y refinanciaciones.</p></div><div class="actions"><button class="btn btn-secondary" [disabled]="!selected()" (click)="openEdit()">Editar</button><button class="btn btn-secondary" [disabled]="!canRefinance()" (click)="openRefinance()">Refinanciar</button><button class="btn btn-danger" [disabled]="!selected()||deleting()" (click)="remove()">Eliminar</button><button class="btn btn-primary" (click)="openNew()">＋ Nuevo préstamo</button></div></div>
     <section class="panel">
       <app-filter-bar [fields]="filterFields()" [values]="filters()" (changed)="onFilterChange($event)"/>
       <div class="table-wrap"><table><thead><tr><th>Código</th><th>Registrado</th><th>Fecha préstamo</th><th>Cliente</th><th>Desembolso</th><th>% interés</th><th>Cuotas</th><th>Total + interés</th><th>Saldo</th><th>Mora</th><th>Ruta</th><th>Estado</th></tr></thead><tbody>
@@ -69,7 +69,7 @@ export class LoansComponent implements OnInit {
   readonly loans = signal<Loan[]>([]); readonly clients = signal<Client[]>([]); readonly routes = signal<Route[]>([]);
   readonly selected = signal<Loan | null>(null); readonly total = signal(0); readonly page = signal(1);
   readonly loading = signal(false); readonly modal = signal(false);
-  readonly mode = signal<LoanMode>('new'); readonly saving = signal(false); readonly preview = signal<LoanPreview | null>(null);
+  readonly mode = signal<LoanMode>('new'); readonly saving = signal(false); readonly deleting = signal(false); readonly preview = signal<LoanPreview | null>(null);
   readonly clientSearch = signal(''); readonly clientPage = signal(1); readonly clientTotal = signal(0); readonly clientLoading = signal(false);
 
   readonly codeOptions = signal<{ value: string; label: string }[]>([]);
@@ -177,5 +177,15 @@ export class LoansComponent implements OnInit {
     this.saving.set(true); const body = this.payload();
     const request = this.mode() === 'new' ? this.service.create(body) : this.mode() === 'edit' ? this.service.update(this.selected()!.id, body) : this.service.refinance(this.selected()!.id, body);
     request.subscribe({ next: (loan) => { const wasRefinance = this.mode() === 'refinance'; this.saving.set(false); this.modal.set(false); this.selected.set(loan); this.load(); this.toast.show(wasRefinance ? `Refinanciación ${loan.number} creada` : 'Préstamo guardado'); }, error: (error) => { this.saving.set(false); this.toast.error(error); } });
+  }
+
+  remove() {
+    const loan = this.selected(); if (!loan) return;
+    if (!window.confirm(`¿Eliminar el préstamo ${loan.number}? Se eliminarán también su plan de pagos y los pagos registrados. Esta acción no se puede deshacer.`)) return;
+    this.deleting.set(true);
+    this.service.remove(loan.id).subscribe({
+      next: () => { this.deleting.set(false); this.selected.set(null); this.toast.show('Préstamo eliminado'); this.load(); },
+      error: (error) => { this.deleting.set(false); this.toast.error(error); },
+    });
   }
 }

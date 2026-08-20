@@ -4,17 +4,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import { ClientStatus, LoanStatus } from '../common/enums';
 import { nextCode } from '../common/utils/codes';
 import { Client } from '../entities/client.entity';
+import { Loan } from '../entities/loan.entity';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
 
 @Injectable()
 export class ClientsService {
   constructor(
     @InjectRepository(Client) private readonly repository: Repository<Client>,
+    @InjectRepository(Loan) private readonly loans: Repository<Loan>,
     private readonly audit: AuditService,
   ) {}
 
@@ -153,6 +155,25 @@ export class ClientsService {
     const saved = await this.repository.save(client);
     await this.audit.log(username, 'Clientes', 'Editar', saved.code);
     return this.findOne(saved.id);
+  }
+
+  async remove(id: string, username: string) {
+    const client = await this.findEntity(id);
+    const activeLoan = await this.loans.findOne({
+      where: { clientId: client.id, status: In([LoanStatus.ACTIVE, LoanStatus.OVERDUE]) },
+    });
+    if (activeLoan)
+      throw new ConflictException(
+        `No se puede eliminar: el cliente tiene el préstamo ${activeLoan.number} activo.`,
+      );
+    try {
+      await this.repository.remove(client);
+    } catch {
+      throw new ConflictException(
+        'No se puede eliminar: el cliente tiene préstamos registrados en su historial.',
+      );
+    }
+    await this.audit.log(username, 'Clientes', 'Eliminar', client.code);
   }
 
   private mapDto(dto: CreateClientDto) {

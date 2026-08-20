@@ -9,5 +9,6 @@ export interface PaymentFilters { receipt?: string; clientName?: string; identif
   listByLoan(loanId:string){return this.api.get<Page<Payment>>('payments',{loanId,page:1,pageSize:100});}
   create(body:unknown){return this.api.post<Payment>('payments',body);} update(id:string,body:unknown){return this.api.patch<Payment>(`payments/${id}`,body);}
   codes(){return this.api.get<{value:string;label:string}[]>('payments/codes');}
+  remove(id:string){return this.api.delete<void>(`payments/${id}`);}
 }
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -20,5 +20,8 @@ export class PaymentsController {
   @Post() create(@Body() dto: CreatePaymentDto, @CurrentUser() user: AuthenticatedUser) { return this.service.create(dto, user.username); }
   @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdatePaymentDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.update(id, dto, user.username);
+  }
+  @Delete(':id') remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.remove(id, user.username);
   }
 }

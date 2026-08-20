@@ -140,6 +140,16 @@ export class LoansService {
     return this.calculate(dto);
   }
 
+  async remove(id: string, username: string) {
+    const loan = await this.loans.findOne({ where: [{ id }, { number: id }] });
+    if (!loan) throw new NotFoundException('Préstamo no encontrado');
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(Payment, { loanId: loan.id });
+      await manager.delete(Loan, { id: loan.id });
+    });
+    await this.audit.log(username, 'Préstamos', 'Eliminar', loan.number);
+  }
+
   async create(dto: CreateLoanDto, username: string) {
     const saved = await this.dataSource.transaction(async (manager) => {
       const client = await manager.findOne(Client, {

@@ -79,7 +79,7 @@ networks:
     internal: true
   edge:
     external: true
-    name: coolify
+    name: ${EDGE_NETWORK:-edge}
 
 volumes:
   cartera_postgres_data:
